@@ -1,0 +1,52 @@
+ASK_LOCATION = "ASK_LOCATION"
+ASK_NAME = "ASK_NAME"
+
+HOME = "HOME"
+
+BROWSE_RESTAURANTS = "BROWSE_RESTAURANTS"
+
+SEARCH_RESTAURANTS = "SEARCH_RESTAURANTS"
+
+SEARCH_RESULTS = "SEARCH_RESULTS"
+
+VIEW_RESTAURANT = "VIEW_RESTAURANT"
+
+VIEW_MENU = "VIEW_MENU"
+
+VIEW_ITEM = "VIEW_ITEM"
+
+VIEW_CART = "VIEW_CART"
+
+CHECKOUT = "CHECKOUT"
+
+PAYMENT = "PAYMENT"
+
+ORDER_STATUS = "ORDER_STATUS"
+
+TRACK_ORDER = "TRACK_ORDER"
+
+CHANGE_LOCATION = "CHANGE_LOCATION"
+
+RATE_ORDER = "RATE_ORDER"
+
+HELP = "HELP"
+
+STEP_CHOICES = [
+    (ASK_LOCATION, "Ask Location"),
+    (ASK_NAME, "Ask Name"),
+    (HOME, "Home"),
+    (BROWSE_RESTAURANTS, "Browse Restaurants"),
+    (SEARCH_RESTAURANTS, "Search Restaurants"),
+    (SEARCH_RESULTS, "Search Results"),
+    (VIEW_RESTAURANT, "View Restaurant"),
+    (VIEW_MENU, "View Menu"),
+    (VIEW_ITEM, "View Item"),
+    (VIEW_CART, "View Cart"),
+    (CHECKOUT, "Checkout"),
+    (PAYMENT, "Payment"),
+    (ORDER_STATUS, "Order Status"),
+    (TRACK_ORDER, "Track Order"),
+    (CHANGE_LOCATION, "Change Location"),
+    (RATE_ORDER, "Rate Order"),
+    (HELP, "Help"),
+]

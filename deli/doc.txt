@@ -1,0 +1,520 @@
+Yes. **The foundation of the conversation engine is done.**
+
+What has been completed:
+
+* ✅ Webhook verification (`GET /webhook`)
+* ✅ Webhook receives POST requests
+* ✅ `WhatsAppBot` router
+* ✅ Handler architecture (`TextHandler`, `LocationHandler`, etc.)
+* ✅ Automatic `Customer` creation
+* ✅ Automatic `ConversationState` creation
+* ✅ Ask for customer's name
+* ✅ Save customer's name
+* ✅ Ask for WhatsApp native location
+* ✅ Save conversation step
+* ✅ Return Home menu after location
+
+---
+
+## Before connecting to WhatsApp
+
+There is **one important piece missing.**
+
+Right now your webhook **returns the reply string**, but it **does not send a message back to WhatsApp**.
+
+Currently your flow is basically:
+
+```
+WhatsApp
+
+↓
+
+Webhook
+
+↓
+
+Process
+
+↓
+
+return "Welcome"
+
+↓
+
+Done
+```
+
+Meta **doesn't read that response and send it to the user.**
+
+Instead you must call the **WhatsApp Cloud API Send Message endpoint**.
+
+So before testing on WhatsApp, we'll add outbound messaging.
+
+---
+
+# New Phase (2.5)
+
+We'll build
+
+```
+whatsapp/
+
+    client.py
+```
+
+This file will communicate with Meta.
+
+---
+
+## File
+
+```
+whatsapp/client.py
+```
+
+```python
+import os
+
+import requests
+
+
+ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+
+PHONE_NUMBER_ID = os.getenv(
+    "WHATSAPP_PHONE_NUMBER_ID"
+)
+
+
+class WhatsAppClient:
+
+    URL = (
+        f"https://graph.facebook.com/v23.0/"
+        f"{PHONE_NUMBER_ID}/messages"
+    )
+
+    def send_text(
+        self,
+        phone,
+        message,
+    ):
+
+        headers = {
+
+            "Authorization": f"Bearer {ACCESS_TOKEN}",
+
+            "Content-Type": "application/json",
+
+        }
+
+        payload = {
+
+            "messaging_product": "whatsapp",
+
+            "to": phone,
+
+            "type": "text",
+
+            "text": {
+
+                "body": message
+
+            }
+
+        }
+
+        response = requests.post(
+
+            self.URL,
+
+            headers=headers,
+
+            json=payload,
+
+        )
+
+        print(response.json())
+
+        return response
+```
+
+---
+
+## Update
+
+`whatsapp/views.py`
+
+After
+
+```python
+reply = bot.process(
+    phone,
+    message_type,
+    payload,
+)
+```
+
+add
+
+```python
+from .client import WhatsAppClient
+
+client = WhatsAppClient()
+
+client.send_text(
+    phone,
+    reply,
+)
+```
+
+Now the flow becomes
+
+```
+WhatsApp
+
+↓
+
+Webhook
+
+↓
+
+Bot
+
+↓
+
+Reply string
+
+↓
+
+Cloud API
+
+↓
+
+User receives message
+```
+
+This is how every production WhatsApp bot works.
+
+---
+
+# Before we launch
+
+You need the following in your `.env`
+
+```env
+WHATSAPP_VERIFY_TOKEN=deli_verify_token
+
+WHATSAPP_ACCESS_TOKEN=EAAG...
+
+WHATSAPP_PHONE_NUMBER_ID=123456789
+```
+
+We'll get those from Meta.
+
+---
+
+# Launching on WhatsApp (Detailed)
+
+## Step 1. Create a Meta Developer Account
+
+Go to:
+
+> [https://developers.facebook.com/](https://developers.facebook.com/)
+
+Log in with your Facebook account.
+
+---
+
+## Step 2. Create an App
+
+Click
+
+```
+Create App
+```
+
+Choose
+
+```
+Other
+```
+
+then
+
+```
+Business
+```
+
+then
+
+```
+Create App
+```
+
+---
+
+## Step 3. Add WhatsApp
+
+Inside the dashboard
+
+```
+Add Product
+
+↓
+
+WhatsApp
+
+↓
+
+Set Up
+```
+
+---
+
+## Step 4. Copy Credentials
+
+You'll see
+
+```
+Temporary Access Token
+
+Phone Number ID
+
+Business Account ID
+```
+
+Copy
+
+```
+Access Token
+
+Phone Number ID
+```
+
+into
+
+```
+.env
+```
+
+---
+
+## Step 5. Choose a Verify Token
+
+Example
+
+```
+deli_verify_token
+```
+
+Put the same value in
+
+```
+.env
+```
+
+---
+
+## Step 6. Expose Your Django Server
+
+Meta **cannot reach localhost**.
+
+Install ngrok:
+
+```bash
+brew install ngrok
+```
+
+Run Django
+
+```bash
+python manage.py runserver
+```
+
+Open another terminal
+
+```bash
+ngrok http 8000
+```
+
+You'll get something like
+
+```
+https://abc123.ngrok-free.app
+```
+
+Copy it.
+
+---
+
+## Step 7. Configure Webhook
+
+In Meta
+
+```
+WhatsApp
+
+↓
+
+Configuration
+
+↓
+
+Edit Webhook
+```
+
+Webhook URL
+
+```
+https://abc123.ngrok-free.app/api/whatsapp/webhook/
+```
+
+Verify Token
+
+```
+deli_verify_token
+```
+
+Meta will send
+
+```
+GET
+
+hub.challenge
+
+hub.verify_token
+```
+
+Your webhook should answer
+
+```
+challenge
+```
+
+Verification succeeds.
+
+---
+
+## Step 8. Subscribe
+
+Enable
+
+```
+messages
+```
+
+---
+
+## Step 9. Add Test Phone
+
+Inside
+
+```
+API Setup
+```
+
+Add
+
+your personal WhatsApp number.
+
+Verify it.
+
+---
+
+## Step 10. Send First Message
+
+Open WhatsApp.
+
+Message
+
+```
+Hi
+```
+
+to the test number Meta provides.
+
+Expected flow
+
+```
+Hi
+
+↓
+
+Webhook
+
+↓
+
+Customer created
+
+↓
+
+Conversation created
+
+↓
+
+Reply
+
+↓
+
+👋 Welcome to Deli!
+
+What's your name?
+```
+
+Reply
+
+```
+Marvel
+```
+
+Bot replies
+
+```
+Nice to meet you Marvel!
+
+Please share your location.
+```
+
+Tap
+
+```
++
+
+↓
+
+Location
+
+↓
+
+Send Current Location
+```
+
+Bot replies
+
+```
+📍 Location received.
+
+Welcome to Deli
+
+1️⃣ Browse Restaurants
+
+2️⃣ Search Food
+
+3️⃣ My Orders
+
+4️⃣ Change Location
+```
+
+---
+
+# One improvement before moving to restaurants
+
+I recommend we **don't jump to restaurants immediately after this**.
+
+Instead, we should first implement the complete **WhatsApp home navigation**, because that's the core user experience. The next milestone should be:
+
+* Option **1** → Browse restaurants (initially returns "No restaurants yet" until we add them).
+* Option **2** → Search food.
+* Option **3** → My Orders.
+* Option **4** → Change Location.
+
+This gives us a fully interactive WhatsApp application before we start adding restaurant data, making it easier to test the conversation flow end-to-end as we build.
