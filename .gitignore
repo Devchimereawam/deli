@@ -27,3 +27,5 @@ web/.env.development
 
 # Logs
 *.log
+
+*md
