@@ -1,17 +1,13 @@
-import os
-from users.constants import (
-    BROWSE_RESTAURANTS,
-)
+from users.constants import BROWSE_RESTAURANTS
+
 from restaurants.services import RestaurantService
 
 from ..services.customer_service import CustomerService
 from ..services.whatsapp_service import WhatsAppService
 from .base import BaseHandler
+from whatsapp.constants import NAVIGATION
 from whatsapp.services.state_service import StateService
 
-from whatsapp.constants import NAVIGATION
-
-BASE_URL = os.getenv("NGROK_URL", "").rstrip("/")
 
 class RestaurantHandler(BaseHandler):
 
@@ -26,19 +22,19 @@ class RestaurantHandler(BaseHandler):
                 customer
             )
         )
-        
+
         StateService.set_restaurant_list(
             conversation,
-            [r.id for r in restaurants],
+            [restaurant.id for restaurant in restaurants],
         )
 
         if not restaurants:
-
             WhatsAppService.send_text(
                 phone,
                 """😔 We couldn't find any restaurants delivering to your area.
 
 Try changing your location or check back later."""
+                + NAVIGATION,
             )
             return
 
@@ -48,73 +44,60 @@ Try changing your location or check back later."""
             push=True,
         )
 
-        message = (
-            "🍽️ *Restaurants Near You*\n\n"
-        )
+        text = "🍽️ *Restaurants Near You*\n\nChoose a number to open a restaurant menu.\n\n"
+
+        best = restaurants[:3]
+
+        if best:
+            text += "⭐ *Best Rated Restaurants*\n"
+
+            for index, restaurant in enumerate(
+                best,
+                start=1,
+            ):
+                text += (
+                    f"{index}. *{restaurant.name}*\n"
+                    f"   ⭐ ({restaurant.rating}) ({restaurant.total_reviews})\n"
+                )
+
+            text += "\n────────────\n\n*All Available Restaurants*\n"
+
+        rows = []
 
         for index, restaurant in enumerate(
             restaurants,
             start=1,
         ):
-
             hours = RestaurantService.format_opening_hours(
                 restaurant,
             )
 
-            caption = (
+            text += (
                 f"{index}. *{restaurant.name}*\n"
-                f"⭐ {restaurant.rating} ({restaurant.total_reviews})\n"
-                f"📍 {restaurant.area.name}\n"
-                f"🕒 {hours}\n\n"
-                f"{restaurant.description or ''}"
+                f"   ⭐ {restaurant.rating} ({restaurant.total_reviews})\n"
+                f"   📍 {restaurant.area.name}\n"
+                f"   🕒 {hours}\n"
             )
 
-            if restaurant.cover_image:
+            if restaurant.description:
+                text += f"{restaurant.description}\n"
 
-                WhatsAppService.send_image(
-                    phone,
-                    f"{BASE_URL}{restaurant.cover_image.url}",
-                    caption,
+            text += "\n"
+            rows.append(
+                (
+                    str(index),
+                    restaurant.name,
+                    f"⭐ {restaurant.rating} · {restaurant.area.name}",
                 )
+            )
 
-            else:
+        text += "Reply with the restaurant number to view its logo and menu."
+        text += NAVIGATION
 
-                WhatsAppService.send_text(
-                    phone,
-                    caption,
-                )
-
-        WhatsAppService.send_text(
+        WhatsAppService.send_list(
             phone,
-            "Reply with the restaurant number."
-            + NAVIGATION,
+            text,
+            rows,
+            "Choose restaurant",
+            "You can also reply with the number.",
         )
-
-"""         for restaurant in restaurants:
-
-            caption = (
-                f"🍽️ *{restaurant.name}*\n"
-                f"⭐ {restaurant.rating}\n"
-                f"📍 {restaurant.area.name}\n\n"
-                f"{restaurant.description}"
-            )
-
-            if restaurant.cover_image_url:
-
-                WhatsAppService.send_image(
-                    phone,
-                    f"{BASE_URL}{restaurant.cover_image.url}",
-                    caption,
-                )
-
-            else:
-
-                WhatsAppService.send_text(
-                    phone,
-                    caption,
-                )
-
-        WhatsAppService.send_text(
-            phone,
-            "Reply with the restaurant number."
-        ) """

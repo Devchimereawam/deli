@@ -15,6 +15,7 @@ from whatsapp.services.state_service import StateService
 
 from ..services.customer_service import CustomerService
 from ..services.whatsapp_service import WhatsAppService
+from ..services.formatting import money
 from .base import BaseHandler
 
 from whatsapp.constants import NAVIGATION
@@ -79,11 +80,11 @@ class CartHandler(BaseHandler):
                 text += (
                     f"{index}. {item.menu_item.name}\n"
                     f"Qty: {item.quantity}\n"
-                    f"₦{subtotal}\n\n"
+                    f"{money(subtotal)}\n\n"
                 )
 
             text += (
-                f"*Total:* ₦{total}\n\n"
+                f"*Total:* {money(total)}\n\n"
                 "Reply:\n\n"
                 "1️⃣ Checkout\n"
                 "2️⃣ Continue Shopping\n"
@@ -98,9 +99,15 @@ class CartHandler(BaseHandler):
                 push=True,
             )
 
-            WhatsAppService.send_text(
+            WhatsAppService.send_buttons(
                 phone,
                 text,
+                [
+                    ("1", "Checkout"),
+                    ("2", "Keep Shopping"),
+                    ("3", "Clear Cart"),
+                ],
+                "You can also reply 1, 2, or 3.",
             )
 
             return
@@ -117,15 +124,12 @@ class CartHandler(BaseHandler):
                 push=True,
             )
 
-            WhatsAppService.send_text(
+            from .checkout import CheckoutHandler
+
+            return CheckoutHandler().start_checkout(
                 phone,
-                """✅ Checkout begins in the next phase.
-
-Payment integration is coming soon.
-"""
+                conversation,
             )
-
-            return
 
         if message == "2":
 
@@ -147,8 +151,15 @@ Payment integration is coming soon.
                 return MenuHandler().handle(phone, "")
 
             if previous == VIEW_ITEM:
-                from .checkout import CheckoutHandler
-                return CheckoutHandler().handle(phone, "")
+                conversation.selected_menu_item = None
+                conversation.save(
+                    update_fields=[
+                        "selected_menu_item",
+                        "updated_at",
+                    ]
+                )
+                from .menu import MenuHandler
+                return MenuHandler().handle(phone, "")
 
             if previous == BROWSE_RESTAURANTS:
                 from .restaurant import RestaurantHandler

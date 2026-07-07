@@ -10,11 +10,13 @@ class CustomerAdmin(admin.ModelAdmin):
         "name",
         "phone",
         "default_address",
+        "account_type",
         "is_registered",
         "created_at",
     )
 
     list_filter = (
+        "account_type",
         "is_registered",
     )
 

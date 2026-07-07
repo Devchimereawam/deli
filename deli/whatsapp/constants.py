@@ -2,9 +2,5 @@ NAVIGATION = """
 
 ────────────
 
-0️⃣ Home
-
-8️⃣ View Cart
-
-9️⃣ Back
+Type: home | cart | back
 """

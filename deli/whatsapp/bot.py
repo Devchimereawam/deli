@@ -3,6 +3,8 @@ from .handlers.location import LocationHandler
 from .handlers.menu import MenuHandler
 from .handlers.restaurant import RestaurantHandler
 from .handlers.checkout import CheckoutHandler
+from .handlers.image import ImageHandler
+from .handlers.interactive import InteractiveHandler
 from .handlers.unsupported import UnsupportedHandler
 
 
@@ -11,9 +13,9 @@ class WhatsAppBot:
     HANDLERS = {
         "text": TextHandler(),
         "location": LocationHandler(),
-        "interactive": UnsupportedHandler(),
-        "button": UnsupportedHandler(),
-        "image": UnsupportedHandler(),
+        "interactive": InteractiveHandler(),
+        "button": InteractiveHandler(),
+        "image": ImageHandler(),
         "document": UnsupportedHandler(),
         "audio": UnsupportedHandler(),
         "video": UnsupportedHandler(),

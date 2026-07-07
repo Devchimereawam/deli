@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 import os
+from decimal import Decimal
 
 from pathlib import Path
 
@@ -146,6 +147,41 @@ MEDIA_URL = "/media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
 
+PUBLIC_BASE_URL = os.getenv(
+    "PUBLIC_BASE_URL",
+    os.getenv("NGROK_URL", ""),
+).rstrip("/")
+
+DELI_DASH_WHATSAPP_NUMBER = os.getenv(
+    "DELI_DASH_WHATSAPP_NUMBER",
+    "",
+)
+
+WHATSAPP_PUBLIC_NUMBER = os.getenv(
+    "WHATSAPP_PUBLIC_NUMBER",
+    "",
+)
+
+DELI_CUSTOMER_SERVICE_FEE = Decimal(
+    os.getenv("DELI_CUSTOMER_SERVICE_FEE", "200")
+)
+
+DELI_MAINTENANCE_FEE = Decimal(
+    os.getenv("DELI_MAINTENANCE_FEE", "100")
+)
+
+DELI_RESTAURANT_PAYOUT_FEE = Decimal(
+    os.getenv("DELI_RESTAURANT_PAYOUT_FEE", "200")
+)
+
+DELI_RIDER_PAYOUT_FEE = Decimal(
+    os.getenv("DELI_RIDER_PAYOUT_FEE", "200")
+)
+
+WHATSAPP_STALE_MESSAGE_MINUTES = int(
+    os.getenv("WHATSAPP_STALE_MESSAGE_MINUTES", "20")
+)
+
 REST_FRAMEWORK = {
 
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -169,10 +205,15 @@ REST_FRAMEWORK = {
 
 NOMBA_BASE_URL = os.getenv(
     "NOMBA_BASE_URL",
-    "https://sandbox.api.nomba.com/v1",
+    "https://sandbox.nomba.com/v1",
 )
 
-NOMBA_ACCOUNT_ID = os.getenv("NOMBA_ACCOUNT_ID")
+NOMBA_ACCOUNT_ID = (
+    os.getenv("NOMBA_ACCOUNT_ID")
+    or os.getenv("NOMBA_PARENT_ACCOUNT_ID")
+)
+
+NOMBA_SUB_ACCOUNT_ID = os.getenv("NOMBA_SUB_ACCOUNT_ID", "")
 
 NOMBA_CLIENT_ID = os.getenv("NOMBA_CLIENT_ID")
 
@@ -181,3 +222,12 @@ NOMBA_CLIENT_SECRET = os.getenv("NOMBA_CLIENT_SECRET")
 NOMBA_WEBHOOK_SECRET = os.getenv("NOMBA_WEBHOOK_SECRET")
 
 NOMBA_CALLBACK_URL = os.getenv("NOMBA_CALLBACK_URL")
+
+NOMBA_ALLOWED_PAYMENT_METHODS = [
+    method.strip()
+    for method in os.getenv(
+        "NOMBA_ALLOWED_PAYMENT_METHODS",
+        "",
+    ).split(",")
+    if method.strip()
+]

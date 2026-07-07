@@ -1,9 +1,10 @@
-from users.constants import ASK_LOCATION
+from users.constants import ASK_ROLE, HOME
+
+from orders.services.order_service import OrderService
 
 from ..services.customer_service import CustomerService
 from ..services.router_service import RouterService
 from ..services.state_service import StateService
-from ..services.whatsapp_service import WhatsAppService
 
 
 class TextHandler:
@@ -15,6 +16,12 @@ class TextHandler:
     ):
 
         message = payload.strip()
+
+        if OrderService.handle_provider_reply(
+            phone,
+            message,
+        ):
+            return
 
         customer, conversation, created = (
             CustomerService.get_customer(phone)
@@ -28,27 +35,34 @@ class TextHandler:
 
             StateService.set(
                 conversation,
-                ASK_LOCATION,
+                ASK_ROLE,
             )
 
-            WhatsAppService.send_text(
-                phone,
-                """👋 Welcome to Deli!
-
-This looks like your first time here.
-
-Let's get you set up.
-
-📍 Please share your location.
-
-If location sharing doesn't work, simply type your delivery area."""
-            )
-
-            WhatsAppService.request_location(
-                phone,
-            )
+            RouterService._prompt_role(phone)
 
             return
+
+        if StateService.session_expired(conversation):
+            StateService.reset(
+                conversation,
+                HOME,
+            )
+
+            if message.lower() in (
+                "hi",
+                "hello",
+                "hey",
+                "heu",
+                "start",
+                "menu",
+                "home",
+            ):
+                return RouterService.route(
+                    phone,
+                    customer,
+                    conversation,
+                    "home",
+                )
 
         ##################################################
         # EVERYTHING ELSE

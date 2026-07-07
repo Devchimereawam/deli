@@ -1,6 +1,7 @@
 from restaurants.services.search_service import SearchService
 
 from whatsapp.constants import NAVIGATION
+from whatsapp.services.formatting import money
 
 from ..services.customer_service import CustomerService
 from ..services.whatsapp_service import WhatsAppService
@@ -62,8 +63,6 @@ class SearchHandler(BaseHandler):
             elif result_type == "food":
 
                 from restaurants.models import MenuItem
-                from restaurants.services import RestaurantService
-                from whatsapp.handlers.checkout import BASE_URL
 
                 item = MenuItem.objects.get(
                     id=ids[index],
@@ -84,51 +83,11 @@ class SearchHandler(BaseHandler):
                     VIEW_ITEM,
                 )
 
-                restaurant = item.restaurant
-
-                hours = RestaurantService.format_opening_hours(
-                    restaurant,
-                )
-
-                description = (
-                    item.description
-                    if item.description
-                    else "No description available."
-                )
-
-                if item.image:
-
-                    WhatsAppService.send_image(
-                        phone,
-                        f"{BASE_URL}{item.image.url}",
-                        item.name,
-                    )
-
-                WhatsAppService.send_text(
+                return CheckoutHandler.send_meal_detail(
                     phone,
-                    f"""🍽️ *{item.name}*
-
-            🏪 {restaurant.name}
-
-            💰 ₦{item.price}
-
-            📝 {description}
-
-            ⭐ Rating: {restaurant.rating}
-
-            🕒 {hours}
-
-            Reply:
-
-            1️⃣ Add to Cart
-
-            2️⃣ Back to Menu
-
-            """
-                    + NAVIGATION
+                    item.restaurant,
+                    item,
                 )
-
-                return
 
         query = payload.strip()
 
@@ -142,9 +101,11 @@ class SearchHandler(BaseHandler):
         ids = []
         types = []
 
+        rows = []
+
         if restaurants.exists():
 
-            text += "🍽️ *RESTAURANTS*\n\n"
+            text += "🍽️ *Restaurants*\n\n"
 
             for restaurant in restaurants[:10]:
 
@@ -152,15 +113,23 @@ class SearchHandler(BaseHandler):
                 types.append("restaurant")
 
                 text += (
-                    f"{len(ids)}. {restaurant.name}\n"
-                    f"⭐ {restaurant.rating}\n\n"
+                    f"{len(ids)}. *{restaurant.name}*\n"
+                    f"   ⭐ {restaurant.rating} ({restaurant.total_reviews})\n"
+                    f"   📍 {restaurant.area.name}\n\n"
+                )
+                rows.append(
+                    (
+                        str(len(ids)),
+                        restaurant.name,
+                        f"Restaurant · ⭐ {restaurant.rating}",
+                    )
                 )
 
         if foods.exists():
 
             text += "\n━━━━━━━━━━━━━━\n\n"
 
-            text += "🍔 *FOOD*\n\n"
+            text += "🍔 *Meals*\n\n"
 
             for food in foods[:10]:
 
@@ -168,16 +137,24 @@ class SearchHandler(BaseHandler):
                 types.append("food")
 
                 text += (
-                    f"{len(ids)}. {food.name}\n"
-                    f"🏪 {food.restaurant.name}\n"
-                    f"💰 ₦{food.price}\n\n"
+                    f"{len(ids)}. *{food.name}*\n"
+                    f"   🏪 {food.restaurant.name}\n"
+                    f"   💰 {money(food.price)}\n"
+                    f"   ⭐ {food.rating} ({food.total_reviews})\n\n"
+                )
+                rows.append(
+                    (
+                        str(len(ids)),
+                        food.name,
+                        f"{money(food.price)} · {food.restaurant.name}",
+                    )
                 )
 
         if not ids:
 
             WhatsAppService.send_text(
                 phone,
-                "😔 Nothing found."
+                "😔 Nothing found in your area. Try a different food name or change location."
             )
 
             return
@@ -192,7 +169,10 @@ class SearchHandler(BaseHandler):
             ]
         )
 
-        WhatsAppService.send_text(
+        WhatsAppService.send_list(
             phone,
             text + NAVIGATION,
+            rows,
+            "Choose item",
+            "You can also reply with the number.",
         )

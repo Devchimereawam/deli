@@ -6,6 +6,8 @@ from .models import (
     MenuItem,
     Inventory,
     OpeningHour,
+    MenuItemReview,
+    RestaurantReview,
 )
 
 
@@ -39,20 +41,26 @@ class RestaurantAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "area",
+        "cuisine_type",
         "rating",
         "is_verified",
         "is_active",
+        "send_orders_to_deli_dash",
+        "estimated_prep_minutes",
     )
 
     search_fields = (
         "name",
         "phone",
+        "whatsapp_number",
+        "contact_name",
         "area__name",
     )
 
     list_filter = (
         "is_verified",
         "is_active",
+        "send_orders_to_deli_dash",
         "area",
     )
 
@@ -114,6 +122,8 @@ class MenuItemAdmin(admin.ModelAdmin):
         "category",
         "price",
         "stock",
+        "rating",
+        "total_reviews",
         "is_available",
         "is_featured",
     )
@@ -139,6 +149,8 @@ class MenuItemAdmin(admin.ModelAdmin):
         "image",
         "is_available",
         "is_featured",
+        "rating",
+        "total_reviews",
     )
 
     readonly_fields = (
@@ -206,4 +218,54 @@ class OpeningHourAdmin(admin.ModelAdmin):
     list_filter = (
         "restaurant",
         "day",
+    )
+
+
+@admin.register(RestaurantReview)
+class RestaurantReviewAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "restaurant",
+        "customer",
+        "rating",
+        "order",
+        "created_at",
+    )
+
+    list_filter = (
+        "restaurant",
+        "rating",
+        "created_at",
+    )
+
+    search_fields = (
+        "restaurant__name",
+        "customer__phone",
+        "customer__name",
+        "comment",
+    )
+
+
+@admin.register(MenuItemReview)
+class MenuItemReviewAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "menu_item",
+        "customer",
+        "rating",
+        "order",
+        "created_at",
+    )
+
+    list_filter = (
+        "menu_item__restaurant",
+        "rating",
+        "created_at",
+    )
+
+    search_fields = (
+        "menu_item__name",
+        "customer__phone",
+        "customer__name",
+        "comment",
     )

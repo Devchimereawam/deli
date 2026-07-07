@@ -23,7 +23,27 @@ class CartService:
         quantity=1,
     ):
 
+        if menu_item is None:
+            raise ValueError(
+                "Please choose a meal first."
+            )
+
         cart = cls.get_cart(customer)
+
+        existing = (
+            cart.items
+            .select_related(
+                "menu_item",
+            )
+            .exclude(
+                menu_item__restaurant=menu_item.restaurant,
+            )
+        )
+
+        if existing.exists():
+            raise ValueError(
+                "Please clear your cart before ordering from another restaurant."
+            )
 
         item, created = (
             CartItem.objects.get_or_create(

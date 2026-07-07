@@ -30,9 +30,12 @@ class OrderAdmin(admin.ModelAdmin):
         "id",
         "customer",
         "restaurant",
+        "delivery_rider",
         "status",
         "subtotal",
         "delivery_fee",
+        "customer_service_fee",
+        "maintenance_fee",
         "total",
         "checkout_reference",
         "created_at",
@@ -41,6 +44,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "restaurant",
+        "delivery_rider",
         "created_at",
     )
 
@@ -56,6 +60,17 @@ class OrderAdmin(admin.ModelAdmin):
         "checkout_reference",
         "payment_reference",
         "checkout_url",
+        "delivery_address",
+        "delivery_contact_phone",
+        "delivery_notes",
+        "customer_service_fee",
+        "maintenance_fee",
+        "restaurant_platform_fee",
+        "rider_platform_fee",
+        "inventory_deducted_at",
+        "restaurant_availability_status",
+        "rider_availability_status",
+        "fallback_status",
         "created_at",
         "updated_at",
     )

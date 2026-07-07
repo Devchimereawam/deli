@@ -26,6 +26,14 @@ urlpatterns = [
     
     path("health/", health),
 
+    path("api/v1/users/", include("users.urls")),
+    path("api/v1/restaurants/", include("restaurants.urls")),
+    path("api/v1/orders/", include("orders.urls")),
+    path("api/v1/cart/", include("cart.urls")),
+    path("api/v1/payments/", include("payments.urls")),
+    path("api/v1/delivery/", include("delivery.urls")),
+    path("api/v1/whatsapp/", include("whatsapp.urls")),
+
     path("api/users/", include("users.urls")),
     path("api/restaurants/", include("restaurants.urls")),
     path("api/orders/", include("orders.urls")),

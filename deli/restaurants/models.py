@@ -24,6 +24,18 @@ class Restaurant(models.Model):
         max_length=20,
     )
 
+    contact_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    cuisine_type = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+    )
+
     description = models.TextField(
         blank=True,
     )
@@ -64,6 +76,46 @@ class Restaurant(models.Model):
 
     is_active = models.BooleanField(
         default=True,
+    )
+
+    send_orders_to_deli_dash = models.BooleanField(
+        default=False,
+        help_text="Use Deli Dash to manually buy from this restaurant instead of messaging the restaurant directly.",
+    )
+
+    estimated_prep_minutes = models.PositiveIntegerField(
+        default=30,
+        help_text="Estimated kitchen preparation time shown to customers and operators.",
+    )
+
+    bank_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+    )
+
+    bank_code = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+
+    account_number = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+
+    account_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    nomba_account_ref = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
     )
 
     created_at = models.DateTimeField(
@@ -170,6 +222,16 @@ class MenuItem(models.Model):
         default=False,
     )
 
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=5.00,
+    )
+
+    total_reviews = models.PositiveIntegerField(
+        default=0,
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
@@ -254,5 +316,93 @@ class OpeningHour(models.Model):
 
     def __str__(self):
         return f"{self.restaurant.name} - {self.day}"
-    
-    
+
+
+class RestaurantReview(models.Model):
+
+    customer = models.ForeignKey(
+        "users.Customer",
+        on_delete=models.CASCADE,
+        related_name="restaurant_reviews",
+    )
+
+    restaurant = models.ForeignKey(
+        Restaurant,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+    )
+
+    order = models.OneToOneField(
+        "orders.Order",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="review",
+    )
+
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+    )
+
+    comment = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = [
+            "-created_at",
+        ]
+
+    def __str__(self):
+        return f"{self.restaurant.name} - {self.rating}/5"
+
+
+class MenuItemReview(models.Model):
+
+    customer = models.ForeignKey(
+        "users.Customer",
+        on_delete=models.CASCADE,
+        related_name="menu_item_reviews",
+    )
+
+    menu_item = models.ForeignKey(
+        MenuItem,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+    )
+
+    order = models.ForeignKey(
+        "orders.Order",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="menu_item_reviews",
+    )
+
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+    )
+
+    comment = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = [
+            "-created_at",
+        ]
+
+    def __str__(self):
+        return f"{self.menu_item.name} - {self.rating}/5"

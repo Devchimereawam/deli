@@ -1,38 +1,24 @@
+.DS_Store
+
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-
-# Virtual Environment
-venv/
-env/
-.venv/
-
-# Django
+*.sqlite3
 db.sqlite3
-media/
-staticfiles/
+.venv/
+venv/
 
-# Environment Variables
-.env
+# Django local files
+deli/.env
+deli/db.sqlite3
+deli/media/
+deli/staticfiles/
 
-# macOS
-.DS_Store
-
-# VSCode
-.vscode/
-
-# PyCharm
-.idea/
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.env*
 
 # Logs
 *.log
-
-# Coverage
-.coverage
-htmlcov/
-
-# Migrations (optional)
-# **/migrations/*.py
-# !**/migrations/__init__.py

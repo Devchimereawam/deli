@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
 from users.constants import HOME
 from .navigation_service import NavigationService
 
@@ -12,6 +16,18 @@ class StateService:
     def get(conversation):
 
         return conversation.current_step
+
+    @staticmethod
+    def session_expired(
+        conversation,
+        minutes=20,
+    ):
+
+        return (
+            conversation.updated_at
+            and conversation.updated_at
+            < timezone.now() - timedelta(minutes=minutes)
+        )
 
     @staticmethod
     def set(
@@ -46,7 +62,7 @@ class StateService:
         return StateService.set(
             conversation,
             step,
-            push=True,
+            push=False,
         )
 
     @staticmethod
@@ -57,12 +73,14 @@ class StateService:
         conversation.selected_restaurant = None
         conversation.selected_category = None
         conversation.selected_menu_item = None
+        conversation.selected_delivery_rider = None
 
         conversation.save(
             update_fields=[
                 "selected_restaurant",
                 "selected_category",
                 "selected_menu_item",
+                "selected_delivery_rider",
                 "updated_at",
             ]
         )
@@ -77,6 +95,12 @@ class StateService:
         conversation.selected_restaurant = None
         conversation.selected_category = None
         conversation.selected_menu_item = None
+        conversation.selected_delivery_rider = None
+        conversation.selected_order = None
+        conversation.delivery_address = ""
+        conversation.delivery_contact_phone = ""
+        conversation.delivery_notes = ""
+        conversation.business_ordering_as_customer = False
         conversation.search_query = ""
 
         if step == HOME:
@@ -91,6 +115,12 @@ class StateService:
                 "selected_restaurant",
                 "selected_category",
                 "selected_menu_item",
+                "selected_delivery_rider",
+                "selected_order",
+                "delivery_address",
+                "delivery_contact_phone",
+                "delivery_notes",
+                "business_ordering_as_customer",
                 "search_query",
                 "updated_at",
             ]
@@ -107,12 +137,14 @@ class StateService:
         conversation.selected_restaurant = restaurant
         conversation.selected_category = None
         conversation.selected_menu_item = None
+        conversation.selected_delivery_rider = None
 
         conversation.save(
             update_fields=[
                 "selected_restaurant",
                 "selected_category",
                 "selected_menu_item",
+                "selected_delivery_rider",
                 "updated_at",
             ]
         )
@@ -145,6 +177,72 @@ class StateService:
         conversation.save(
             update_fields=[
                 "selected_menu_item",
+                "updated_at",
+            ]
+        )
+
+    @staticmethod
+    def set_delivery_details(
+        conversation,
+        address,
+        contact_phone,
+        notes="",
+    ):
+
+        conversation.delivery_address = address.strip()
+        conversation.delivery_contact_phone = contact_phone.strip()
+        conversation.delivery_notes = notes.strip()
+
+        conversation.save(
+            update_fields=[
+                "delivery_address",
+                "delivery_contact_phone",
+                "delivery_notes",
+                "updated_at",
+            ]
+        )
+
+    @staticmethod
+    def set_delivery_rider(
+        conversation,
+        rider,
+    ):
+
+        conversation.selected_delivery_rider = rider
+
+        conversation.save(
+            update_fields=[
+                "selected_delivery_rider",
+                "updated_at",
+            ]
+        )
+
+    @staticmethod
+    def set_order(
+        conversation,
+        order,
+    ):
+
+        conversation.selected_order = order
+
+        conversation.save(
+            update_fields=[
+                "selected_order",
+                "updated_at",
+            ]
+        )
+
+    @staticmethod
+    def set_business_ordering(
+        conversation,
+        enabled,
+    ):
+
+        conversation.business_ordering_as_customer = enabled
+
+        conversation.save(
+            update_fields=[
+                "business_ordering_as_customer",
                 "updated_at",
             ]
         )

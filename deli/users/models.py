@@ -14,6 +14,16 @@ def default_navigation_stack():
 
 class Customer(models.Model):
 
+    ACCOUNT_CUSTOMER = "customer"
+    ACCOUNT_RESTAURANT = "restaurant"
+    ACCOUNT_RIDER = "rider"
+
+    ACCOUNT_CHOICES = [
+        (ACCOUNT_CUSTOMER, "Customer"),
+        (ACCOUNT_RESTAURANT, "Restaurant"),
+        (ACCOUNT_RIDER, "Delivery Rider"),
+    ]
+
     phone = models.CharField(
         max_length=20,
         unique=True,
@@ -27,6 +37,13 @@ class Customer(models.Model):
 
     is_registered = models.BooleanField(
         default=False,
+    )
+
+    account_type = models.CharField(
+        max_length=20,
+        choices=ACCOUNT_CHOICES,
+        blank=True,
+        default="",
     )
 
     created_at = models.DateTimeField(
@@ -83,11 +100,11 @@ class ConversationState(models.Model):
     )
 
     selected_restaurant = models.ForeignKey(
-    Restaurant,
-    null=True,
-    blank=True,
-    on_delete=models.SET_NULL,
-    related_name="+",
+        Restaurant,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
 
     selected_category = models.ForeignKey(
@@ -106,26 +123,62 @@ class ConversationState(models.Model):
         related_name="+",
     )
 
+    selected_delivery_rider = models.ForeignKey(
+        "delivery.DeliveryRider",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    selected_order = models.ForeignKey(
+        "orders.Order",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    delivery_address = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    delivery_contact_phone = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+    )
+
+    delivery_notes = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    business_ordering_as_customer = models.BooleanField(
+        default=False,
+    )
+
     search_query = models.CharField(
-    max_length=255,
-    blank=True,
-    default="",
+        max_length=255,
+        blank=True,
+        default="",
     )
     
     search_result_type = models.JSONField(
-    max_length=20,
-    blank=True,
-    default=list,
+        max_length=20,
+        blank=True,
+        default=list,
     )
     
     search_result_ids = models.JSONField(
-    default=list,
-    blank=True,
+        default=list,
+        blank=True,
     )
     
     restaurant_ids = models.JSONField(
-    default=list,
-    blank=True,
+        default=list,
+        blank=True,
     )
 
     last_message = models.TextField(
@@ -133,8 +186,8 @@ class ConversationState(models.Model):
     )
     
     navigation_stack = models.JSONField(
-    default=default_navigation_stack,
-    blank=True,
+        default=default_navigation_stack,
+        blank=True,
     )
 
     updated_at = models.DateTimeField(
