@@ -1,14 +1,14 @@
+# macOS
 .DS_Store
 
 # Python
 __pycache__/
 *.py[cod]
 *.sqlite3
-db.sqlite3
 .venv/
 venv/
 
-# Django local files
+# Django
 deli/.env
 deli/db.sqlite3
 deli/media/
@@ -18,7 +18,12 @@ deli/staticfiles/
 web/node_modules/
 web/.next/
 web/out/
+web/_next_backup/
 web/.env*
 
 # Logs
 *.log
+
+# Markdown
+*.md
+web/dist/
