@@ -28,7 +28,7 @@ web/.env.development
 # Logs
 *.log
 
-*.md
+*md
 
 FULL_APP_DOCUMENTATION.md
 README.md
