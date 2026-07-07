@@ -161,6 +161,8 @@ PIN: 1234
 OTP: 9999
 ```
 
+Nomba controls the OTP screen. Do not use `999999`; it is not the documented success OTP. If the hosted sandbox page forces a six-digit OTP and rejects `9999`, ask the Nomba hackathon channel for the active six-digit approval OTP.
+
 ## Webhooks
 
 Nomba:

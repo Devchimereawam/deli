@@ -165,6 +165,8 @@ PIN: 1234
 OTP: 9999
 ```
 
+Nomba controls the OTP screen. Do not use `999999`; it is not the documented success OTP. If the hosted sandbox page forces a six-digit OTP and rejects `9999`, ask the Nomba hackathon channel for the active six-digit approval OTP.
+
 Use `NOMBA_ALLOWED_PAYMENT_METHODS=Card` during sandbox testing to stay on the reliable card path.
 
 You do not manually tell Nomba that you paid. Completing the sandbox card flow is the test payment. If the webhook does not arrive, use:

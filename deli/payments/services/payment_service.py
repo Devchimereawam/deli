@@ -4,6 +4,7 @@ import hmac
 import logging
 from decimal import Decimal
 from datetime import timedelta
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import requests
@@ -137,9 +138,7 @@ class PaymentService:
         }
 
     @classmethod
-    def create_checkout(cls, order):
-
-        merchant_ref = f"PAY-{uuid4().hex.upper()}"
+    def callback_url(cls):
 
         callback_url = (
             getattr(settings, "NOMBA_CALLBACK_URL", "")
@@ -148,7 +147,24 @@ class PaymentService:
                 if getattr(settings, "PUBLIC_BASE_URL", "")
                 else ""
             )
-        )
+        ).strip()
+
+        parsed = urlparse(callback_url)
+
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise RuntimeError(
+                "NOMBA_CALLBACK_URL must be a clean public HTTPS URL, for example "
+                "https://your-domain/api/v1/payments/return/. Without this, Nomba may redirect to its homepage."
+            )
+
+        return callback_url
+
+    @classmethod
+    def create_checkout(cls, order):
+
+        merchant_ref = f"PAY-{uuid4().hex.upper()}"
+
+        callback_url = cls.callback_url()
 
         order_payload = {
             "orderReference": merchant_ref,
@@ -183,6 +199,7 @@ class PaymentService:
                 "merchantTxRef": merchant_ref,
                 "order": order.checkout_reference,
                 "amount": order_payload["amount"],
+                "callbackUrl": callback_url,
             },
         )
 
@@ -557,9 +574,29 @@ class PaymentService:
     @classmethod
     def requery_checkout(cls, merchant_reference):
 
+        try:
+            response = requests.get(
+                f"{cls.checkout_base_url()}/checkout/order/{merchant_reference}",
+                headers=cls._headers(),
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.HTTPError as exc:
+            if (
+                not cls.is_sandbox()
+                or exc.response is None
+                or exc.response.status_code != 404
+            ):
+                raise
+
         response = requests.get(
-            f"{cls.checkout_base_url()}/checkout/order/{merchant_reference}",
+            f"{cls.api_root()}/sandbox/checkout/transaction",
             headers=cls._headers(),
+            params={
+                "idType": "orderReference",
+                "id": merchant_reference,
+            },
             timeout=30,
         )
         response.raise_for_status()
@@ -622,7 +659,9 @@ class PaymentService:
                 "paid",
                 "completed",
                 "approved",
+                "payment successful",
             }
+            or "payment successful" in token
             or (key == "responsecode" and token == "00")
             or token.endswith("_success")
             or token.endswith(".success")
@@ -656,6 +695,7 @@ class PaymentService:
             "responsestatus",
             "paymentstatus",
             "orderstatus",
+            "statuscode",
             "transactionstatus",
         }
 

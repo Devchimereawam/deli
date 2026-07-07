@@ -125,7 +125,7 @@ class MenuHandler(BaseHandler):
             restaurant
         )
 
-        text = (
+        header_text = (
             f"🍽️ *{restaurant.name}*\n"
             f"⭐ {restaurant.rating} ({restaurant.total_reviews} reviews)\n"
             f"📍 {restaurant.area.name}\n"
@@ -134,7 +134,19 @@ class MenuHandler(BaseHandler):
         )
 
         if restaurant.description:
-            text += f"{restaurant.description}\n\n"
+            header_text += f"{restaurant.description}\n\n"
+
+        restaurant_image = restaurant.logo or restaurant.cover_image
+
+        if restaurant_image:
+            WhatsAppService.send_image_field(
+                phone,
+                restaurant_image,
+                header_text,
+            )
+            text = f"🍽️ *{restaurant.name} Menu*\n\n"
+        else:
+            text = header_text
 
         current_category = None
         rows = []
