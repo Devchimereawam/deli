@@ -188,6 +188,21 @@ class Order(models.Model):
         blank=True,
     )
 
+    restaurant_dispatch_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    provider_delivery_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    customer_delivery_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     inventory_deducted_at = models.DateTimeField(
         null=True,
         blank=True,

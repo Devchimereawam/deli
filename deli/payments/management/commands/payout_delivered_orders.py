@@ -28,6 +28,8 @@ class Command(BaseCommand):
 
         orders = Order.objects.filter(
             status=Order.STATUS_DELIVERED,
+            customer_delivery_confirmed_at__isnull=False,
+            provider_delivery_confirmed_at__isnull=False,
         ).select_related(
             "restaurant",
             "delivery_rider",

@@ -207,7 +207,6 @@ class OrderService:
             update_fields=update_fields,
         )
 
-        cls.notify_deli_admin_settlement_preview(order)
         cls.clear_other_awaiting_payment_orders(order)
 
         return order
@@ -319,6 +318,16 @@ Thanks for using Deli.
 
         if order.status == Order.STATUS_PAID:
             current = "Payment confirmed. We are confirming the restaurant and rider."
+        elif (
+            order.provider_delivery_confirmed_at
+            and not order.customer_delivery_confirmed_at
+        ):
+            current = "Provider confirmed delivery. Waiting for customer confirmation."
+        elif (
+            order.customer_delivery_confirmed_at
+            and not order.provider_delivery_confirmed_at
+        ):
+            current = "Customer confirmed delivery. Waiting for rider or restaurant confirmation."
         elif order.status in (
             Order.STATUS_ACCEPTED,
             Order.STATUS_PREPARING,
@@ -344,7 +353,9 @@ Thanks for using Deli.
 
 1. Ready at restaurant: {mark(restaurant_ready)}
 2. Picked up: {mark(picked_up)}
-3. On your way to you: {mark(on_the_way)}"""
+3. On your way to you: {mark(on_the_way)}
+4. Provider confirmed delivery: {mark(bool(order.provider_delivery_confirmed_at))}
+5. Customer confirmed delivery: {mark(bool(order.customer_delivery_confirmed_at))}"""
 
     @staticmethod
     def _deduct_inventory(order):
@@ -392,8 +403,12 @@ Thanks for using Deli.
         order,
     ):
 
+        already_delivered = order.status == Order.STATUS_DELIVERED
+        review_already_requested = bool(order.review_requested_at)
+
         order.status = Order.STATUS_DELIVERED
-        order.review_requested_at = timezone.now()
+        if not order.review_requested_at:
+            order.review_requested_at = timezone.now()
 
         order.save(
             update_fields=[
@@ -402,6 +417,9 @@ Thanks for using Deli.
                 "updated_at",
             ]
         )
+
+        if already_delivered and review_already_requested:
+            return order
 
         from users.constants import REVIEW_CHOICE
         from users.models import ConversationState
@@ -433,6 +451,94 @@ Choose what to review now, or type review later.""",
         )
 
         OrderService.notify_deli_admin_payout_ready(order)
+
+        return order
+
+    @classmethod
+    def confirm_customer_delivery(cls, order):
+
+        order.refresh_from_db()
+
+        if order.status == Order.STATUS_DELIVERED:
+            return cls.mark_delivered(order)
+
+        if not order.customer_delivery_confirmed_at:
+            order.customer_delivery_confirmed_at = timezone.now()
+            order.save(
+                update_fields=[
+                    "customer_delivery_confirmed_at",
+                    "updated_at",
+                ]
+            )
+
+        if order.provider_delivery_confirmed_at:
+            return cls.mark_delivered(order)
+
+        from whatsapp.services.whatsapp_service import WhatsAppService
+
+        WhatsAppService.send_list(
+            order.customer.phone,
+            f"""✅ Delivery confirmation saved for *{order.checkout_reference}*.
+
+We are waiting for the rider or restaurant to confirm delivery too. Payout stays pending until both sides confirm.
+
+{cls.order_tracking_text(order)}""",
+            cls.post_payment_action_rows(),
+            "Order actions",
+            "Reply 1, 2, 3, 4, 5, or 6.",
+        )
+
+        return order
+
+    @classmethod
+    def confirm_provider_delivery(
+        cls,
+        order,
+        provider_phone="",
+    ):
+
+        order.refresh_from_db()
+
+        if order.status == Order.STATUS_DELIVERED:
+            return cls.mark_delivered(order)
+
+        if not order.provider_delivery_confirmed_at:
+            order.provider_delivery_confirmed_at = timezone.now()
+            order.save(
+                update_fields=[
+                    "provider_delivery_confirmed_at",
+                    "updated_at",
+                ]
+            )
+
+        from whatsapp.services.whatsapp_service import WhatsAppService
+
+        if order.customer_delivery_confirmed_at:
+            delivered = cls.mark_delivered(order)
+            if provider_phone:
+                WhatsAppService.send_text(
+                    provider_phone,
+                    f"✅ Delivery fully confirmed for *{order.checkout_reference}*. Payout is now pending Deli admin processing.",
+                )
+            return delivered
+
+        WhatsAppService.send_list(
+            order.customer.phone,
+            f"""🚚 The rider or restaurant marked order *{order.checkout_reference}* as delivered.
+
+Please confirm only after you have received the food. Payout stays pending until you confirm.
+
+{cls.order_tracking_text(order)}""",
+            cls.post_payment_action_rows(),
+            "Order actions",
+            "Reply 2 to confirm delivered.",
+        )
+
+        if provider_phone:
+            WhatsAppService.send_text(
+                provider_phone,
+                f"✅ Delivery confirmation saved for *{order.checkout_reference}*. Payout is pending until the customer also confirms delivered.",
+            )
 
         return order
 
@@ -494,11 +600,6 @@ Choose what to review now, or type review later.""",
 
         restaurant_net = cls.restaurant_net_payout(order)
         rider_net = cls.rider_net_payout(order)
-        command = (
-            f"pipenv run python manage.py payout_delivered_orders --order {order.checkout_reference} --execute"
-            if ready
-            else f"pipenv run python manage.py payout_delivered_orders --order {order.checkout_reference}"
-        )
 
         rider_text = (
             f"""
@@ -536,10 +637,7 @@ Bank: {order.restaurant.bank_name or "Not set"} {order.restaurant.account_number
 Account name: {order.restaurant.account_name or "Not set"}
 {rider_text}
 
-Command:
-{command}
-
-{"Run this only after delivery is complete." if not ready else "This order is delivered. Run --execute only when ready to send money."}"""
+{"Payout is ready because customer and provider confirmed delivery." if ready else "Payout is not ready until delivery is confirmed by the customer and provider."}"""
         )
 
     @staticmethod
@@ -646,6 +744,12 @@ Reply NO if you cannot."""
 
         from whatsapp.services.whatsapp_service import WhatsAppService
 
+        dispatch_instruction = (
+            "Reply 1 after you give the rider this order to confirm dispatch of food."
+            if order.delivery_rider
+            else "Reply DELIVERED after the food is handed to the customer. The customer must also confirm delivered before payout is released."
+        )
+
         WhatsAppService.send_text(
             cls._restaurant_recipient(order),
             f"""✅ Order confirmed: *{order.checkout_reference}*
@@ -653,9 +757,16 @@ Reply NO if you cannot."""
 Items:
 {cls.order_items_text(order)}
 
+Restaurant payout:
+Food total: {money(order.subtotal)}
+Deli restaurant fee: {money(order.restaurant_platform_fee)}
+Net restaurant payout: {money(cls.restaurant_net_payout(order))}
+
+Payout is processed after delivery is completed and the customer confirms delivered.
+
 Please prepare only the items above.
 
-Reply 1 after you give the rider this order to confirm dispatch of food."""
+{dispatch_instruction}"""
         )
 
     @classmethod
@@ -688,6 +799,13 @@ Customer phone:
 
 Notes:
 {order.delivery_notes or "None"}
+
+Rider payout:
+Delivery fee: {money(order.delivery_fee)}
+Deli rider fee: {money(order.rider_platform_fee)}
+Net rider payout: {money(cls.rider_net_payout(order))}
+
+Important: tell the customer to confirm delivered on the spot where the delivery happens before or after the food is handed over, so your payout can be released.
 
 Reply 1 after you deliver the order to the customer."""
         )
@@ -897,7 +1015,10 @@ We'll keep you posted.{partner_note}
                 )
                 and not order.delivery_rider
             ):
-                cls.mark_delivered(order)
+                cls.confirm_provider_delivery(
+                    order,
+                    provider_phone=phone,
+                )
                 return True
 
             if order.status in (
@@ -905,9 +1026,12 @@ We'll keep you posted.{partner_note}
                 Order.STATUS_PREPARING,
             ):
                 order.status = Order.STATUS_ON_THE_WAY
+                if not order.restaurant_dispatch_confirmed_at:
+                    order.restaurant_dispatch_confirmed_at = timezone.now()
                 order.save(
                     update_fields=[
                         "status",
+                        "restaurant_dispatch_confirmed_at",
                         "updated_at",
                     ]
                 )
@@ -937,10 +1061,9 @@ The food has been handed to the rider.
                 Order.STATUS_PREPARING,
                 Order.STATUS_ON_THE_WAY,
             ):
-                cls.mark_delivered(order)
-                WhatsAppService.send_text(
-                    phone,
-                    f"✅ Delivery confirmed for *{order.checkout_reference}*."
+                cls.confirm_provider_delivery(
+                    order,
+                    provider_phone=phone,
                 )
                 return True
 

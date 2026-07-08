@@ -1432,7 +1432,7 @@ Reply 1 to browse restaurants."""
                     order,
                 )
 
-            OrderService.mark_delivered(order)
+            OrderService.confirm_customer_delivery(order)
             return
 
         if command in (
