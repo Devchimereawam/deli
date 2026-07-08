@@ -83,7 +83,7 @@ class HomeHandler:
 {
 f"Welcome back, *{customer.name}*."
 if customer.name
-else "Welcome. Easy buy any food or see food options near you with Deli."
+else "Welcome. Easily buy any food or see food options near you with Deli."
 }
 
 {
@@ -95,7 +95,6 @@ else ""
 Stop asking or going out just to see what they have. View real-time menus and order from home.
 
 ────────────
-
 {hot_text}
 ────────────
 

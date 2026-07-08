@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db.models import Q
 from django.utils.dateparse import parse_time
 
 from users.constants import (
@@ -35,6 +36,8 @@ from delivery.models import DeliveryRider
 from locations.models import Area
 from orders.models import Order
 from orders.services.order_service import OrderService
+from payments.models import Payment
+from payments.services.payment_service import PaymentService
 from restaurants.models import (
     Category,
     Inventory,
@@ -209,6 +212,11 @@ class RouterService:
                 ORDER_STATUS,
                 push=True,
             )
+            if cls._confirm_latest_pending_payment(
+                phone,
+                customer,
+            ):
+                return
             return cls._handle_order_status_action(
                 phone,
                 customer,
@@ -1323,6 +1331,20 @@ Reply 1 to browse restaurants."""
         command,
     ):
 
+        if command in (
+            "track",
+            "track order",
+            "track_order",
+            "paid",
+            "i have paid",
+            "payment successful",
+            "payment success",
+        ) and cls._confirm_latest_pending_payment(
+            phone,
+            customer,
+        ):
+            return
+
         selected_order = None
 
         if command.startswith("order:") or (
@@ -1443,6 +1465,39 @@ Reply 1 to browse restaurants."""
         return cls._show_orders(
             phone,
             customer,
+        )
+
+    @staticmethod
+    def _confirm_latest_pending_payment(
+        phone,
+        customer,
+    ):
+
+        pending = (
+            Payment.objects
+            .filter(
+                order__customer=customer,
+            )
+            .filter(
+                Q(status=Payment.STATUS_PENDING)
+                | Q(order__status=Order.STATUS_AWAITING_PAYMENT)
+            )
+            .exists()
+        )
+
+        if not pending:
+            return False
+
+        try:
+            payment = PaymentService.confirm_latest_pending_for_customer(
+                customer,
+            )
+        except Exception:
+            return False
+
+        return bool(
+            payment
+            and payment.status == Payment.STATUS_SUCCESS
         )
 
     @staticmethod

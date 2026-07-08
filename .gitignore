@@ -10,6 +10,7 @@ venv/
 
 # Django
 deli/.env
+deli/.env.local
 deli/db.sqlite3
 deli/media/
 deli/staticfiles/
@@ -29,10 +30,5 @@ web/.env.development
 *.log
 
 # Markdown docs hidden for now
-*.md
-
-*md
-
-FULL_APP_DOCUMENTATION.md
-README.md
 HOSTINGER_NOMBA_DEPLOYMENT.md
+README.md

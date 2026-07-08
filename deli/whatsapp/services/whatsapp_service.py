@@ -67,9 +67,11 @@ class WhatsAppService:
 
         return cls.send_text(
             phone,
-            """📍 *Set Delivery Location*
+            """📍 *Please share your location*
 
-Use *Live Location* or *Current Location* if you want restaurants near your exact area, or if you live in a large city with many areas.
+Use *Live Location* Tap the ➕ attachment icon in WhatsApp and share your Live Location or Current Location, if you want restaurants near your exact area, or if you live in a city where areas are large.
+
+Or
 
 To see restaurants across a whole city, simply type the city name.
 
@@ -78,7 +80,9 @@ Nsukka
 Enugu
 Lagos
 
-You can also type a full delivery address if you want us to save that address."""
+If WhatsApp can't determine your location, simply type your location instead.
+
+We use this to show nearby restaurants."""
         )
 
     @classmethod

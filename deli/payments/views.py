@@ -15,10 +15,11 @@ from payments.services.payment_service import PaymentService
 logger = logging.getLogger(__name__)
 
 
-def payment_return(request):
+def payment_return(request, reference=""):
 
     reference = (
-        request.GET.get("reference")
+        reference
+        or request.GET.get("reference")
         or request.GET.get("merchantTxRef")
         or request.GET.get("merchantReference")
         or request.GET.get("orderReference")
@@ -29,7 +30,8 @@ def payment_return(request):
     if not reference:
         return _payment_return_page(
             title="Return to WhatsApp",
-            message="We received the payment return, but Nomba did not include an order reference. Return to WhatsApp and type track.",
+            message="We received the payment return. Return to WhatsApp so Deli can finish confirming the latest payment.",
+            whatsapp_text="payment successful",
             auto_redirect=True,
         )
 

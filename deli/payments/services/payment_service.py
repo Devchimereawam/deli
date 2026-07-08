@@ -5,8 +5,6 @@ import logging
 from decimal import Decimal
 from datetime import timedelta
 from urllib.parse import (
-    parse_qsl,
-    urlencode,
     urlparse,
     urlunparse,
 )
@@ -172,12 +170,14 @@ class PaymentService:
     ):
 
         parsed = urlparse(callback_url)
-        query = dict(parse_qsl(parsed.query))
-        query["reference"] = reference
+        path = parsed.path.rstrip("/")
+
+        if not path.endswith(f"/{reference}"):
+            path = f"{path}/{reference}"
 
         return urlunparse(
             parsed._replace(
-                query=urlencode(query),
+                path=f"{path}/",
             )
         )
 
@@ -740,6 +740,50 @@ class PaymentService:
         )
 
         return payment
+
+    @classmethod
+    def confirm_latest_pending_for_customer(cls, customer):
+
+        payments = (
+            Payment.objects
+            .select_related(
+                "order",
+            )
+            .filter(
+                order__customer=customer,
+            )
+            .filter(
+                Q(status=Payment.STATUS_PENDING)
+                | Q(order__status=Payment.STATUS_AWAITING_PAYMENT)
+            )
+            .order_by(
+                "-created_at",
+            )[:5]
+        )
+
+        last_payment = None
+        last_error = None
+
+        for payment in payments:
+            last_payment = payment
+
+            try:
+                confirmed = cls.confirm_checkout(
+                    payment.merchant_reference,
+                )
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            if confirmed.status == Payment.STATUS_SUCCESS:
+                return confirmed
+
+            last_payment = confirmed
+
+        if last_error and not last_payment:
+            raise last_error
+
+        return last_payment
 
     @classmethod
     def _response_is_success(cls, payload):
