@@ -8,7 +8,7 @@ from urllib.parse import (
     urlparse,
     urlunparse,
 )
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import requests
 
@@ -573,18 +573,41 @@ class PaymentService:
         unique = []
 
         for reference in references:
-            if not reference:
-                continue
-
-            reference = str(reference).strip()
-
-            if reference.startswith("ORD-"):
-                continue
+            reference = cls._safe_checkout_requery_reference(reference)
 
             if reference and reference not in unique:
                 unique.append(reference)
 
         return unique
+
+    @staticmethod
+    def _looks_like_uuid(reference):
+
+        try:
+            UUID(str(reference))
+        except (TypeError, ValueError):
+            return False
+
+        return True
+
+    @classmethod
+    def _safe_checkout_requery_reference(cls, reference):
+
+        if not reference:
+            return ""
+
+        reference = str(reference).strip()
+
+        if not reference:
+            return ""
+
+        if reference.upper().startswith("ORD-"):
+            return ""
+
+        if cls._looks_like_uuid(reference):
+            return ""
+
+        return reference
 
     @classmethod
     def confirm_payment_for_order(cls, order):
@@ -757,6 +780,87 @@ class PaymentService:
         return response.json()
 
     @classmethod
+    def requery_transaction(cls, merchant_reference):
+
+        last_error = None
+
+        endpoints = [
+            (
+                f"{cls.base_url()}/transactions/{merchant_reference}",
+                None,
+            ),
+        ]
+
+        sub_account_id = getattr(
+            settings,
+            "NOMBA_SUB_ACCOUNT_ID",
+            "",
+        )
+
+        if sub_account_id:
+            for key in (
+                "merchantTxRef",
+                "reference",
+                "orderReference",
+            ):
+                endpoints.append(
+                    (
+                        f"{cls.base_url()}/transactions/accounts/{sub_account_id}",
+                        {
+                            key: merchant_reference,
+                        },
+                    )
+                )
+
+        for endpoint, params in endpoints:
+            try:
+                response = requests.get(
+                    endpoint,
+                    headers=cls._headers(),
+                    params=params,
+                    timeout=30,
+                )
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            raw = response.json()
+
+            if cls._payload_contains_reference(
+                raw,
+                merchant_reference,
+            ):
+                return raw
+
+        if last_error:
+            raise last_error
+
+        return None
+
+    @staticmethod
+    def _payload_contains_reference(payload, reference):
+
+        reference = str(reference).strip().lower()
+
+        def contains(value):
+            if isinstance(value, dict):
+                return any(
+                    contains(child)
+                    for child in value.values()
+                )
+
+            if isinstance(value, list):
+                return any(
+                    contains(child)
+                    for child in value
+                )
+
+            return str(value).strip().lower() == reference
+
+        return contains(payload)
+
+    @classmethod
     def confirm_checkout(cls, merchant_reference):
 
         payment = cls.payment_for_reference(
@@ -792,6 +896,33 @@ class PaymentService:
             if cls._response_is_failed(raw):
                 return cls.handle_payment_failed(
                     reference,
+                    raw,
+                )
+
+        transaction_refs = cls.reference_candidates_for_payment(
+            payment,
+            first_reference=payment.merchant_reference,
+        )
+
+        for reference in transaction_refs:
+            try:
+                raw = cls.requery_transaction(reference)
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            if not raw:
+                continue
+
+            if cls._response_is_success(raw):
+                return cls.handle_payment_success(
+                    payment.merchant_reference,
+                    raw,
+                )
+
+            if cls._response_is_failed(raw):
+                return cls.handle_payment_failed(
+                    payment.merchant_reference,
                     raw,
                 )
 

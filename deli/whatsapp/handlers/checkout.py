@@ -672,7 +672,7 @@ We use Nomba for secure payments.
 
 Tap Continue to pay in your browser. After payment, Deli will confirm the restaurant and delivery rider.
 
-If the page does not redirect you automatically after payment, kindly return to our WhatsApp chat. Please send the message "Payment Successful", if that still doesn't work, send your payment reference number (e.g., PAY-...).""",
+If the page does not redirect you back to WhatsApp automatically after payment, kindly return to our WhatsApp chat. Please send the message "Payment Successful", to trigger a payment check/recheck.""",
             "Continue",
             payment.checkout_url,
             fallback_text=f"""💳 *Payment*
