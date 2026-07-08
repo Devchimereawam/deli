@@ -196,6 +196,22 @@ class RouterService:
                 customer,
             )
 
+        if command.upper().startswith("PAY-"):
+            StateService.set(
+                conversation,
+                ORDER_STATUS,
+                push=True,
+            )
+            if cls._confirm_payment_reference(
+                phone,
+                command.upper(),
+            ):
+                return
+            return cls._show_orders(
+                phone,
+                customer,
+            )
+
         if command in (
             "track",
             "track order",
@@ -1492,13 +1508,75 @@ Reply 1 to browse restaurants."""
             payment = PaymentService.confirm_latest_pending_for_customer(
                 customer,
             )
-        except Exception:
-            return False
+        except Exception as exc:
+            WhatsAppService.send_text(
+                phone,
+                f"""We found a pending payment, but Nomba has not confirmed it to Deli yet.
 
-        return bool(
-            payment
-            and payment.status == Payment.STATUS_SUCCESS
+Reason: {exc}
+
+Please wait 30 seconds and send *payment successful* again.
+
+If this keeps happening, send your Deli payment reference that starts with PAY-."""
+            )
+            return True
+
+        if payment and payment.status == Payment.STATUS_SUCCESS:
+            return True
+
+        if payment:
+            references = PaymentService.reference_candidates_for_payment(
+                payment,
+            )
+            reference_text = references[0] if references else payment.merchant_reference
+
+            WhatsAppService.send_text(
+                phone,
+                f"""We checked Nomba, but this order is not confirmed as paid on Deli yet.
+
+Order: *{payment.order.checkout_reference}*
+Payment reference: *{reference_text}*
+Current Deli status: *{payment.order.get_status_display()}*
+
+If you just paid, wait 30 seconds and send *payment successful* again."""
+            )
+            return True
+
+        return False
+
+    @staticmethod
+    def _confirm_payment_reference(
+        phone,
+        reference,
+    ):
+
+        try:
+            payment = PaymentService.confirm_checkout(
+                reference,
+            )
+        except Exception as exc:
+            WhatsAppService.send_text(
+                phone,
+                f"""We could not confirm payment reference *{reference}* yet.
+
+Reason: {exc}
+
+Please wait 30 seconds and send the reference again."""
+            )
+            return True
+
+        if payment.status == Payment.STATUS_SUCCESS:
+            return True
+
+        WhatsAppService.send_text(
+            phone,
+            f"""Nomba has not returned a paid status for *{reference}* yet.
+
+Current Deli status: *{payment.order.get_status_display()}*
+
+Please wait 30 seconds and send the reference again."""
         )
+        return True
 
     @staticmethod
     def _handle_payment_wait(phone):

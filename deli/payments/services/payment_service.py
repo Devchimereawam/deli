@@ -531,9 +531,52 @@ class PaymentService:
                 | Q(order__checkout_reference=reference)
                 | Q(raw_response__data__orderReference=reference)
                 | Q(raw_response__data__order_reference=reference)
+                | Q(raw_response__data__transaction__orderReference=reference)
+                | Q(raw_response__data__transaction__reference=reference)
             )
             .first()
         )
+
+    @classmethod
+    def reference_candidates_for_payment(
+        cls,
+        payment,
+        first_reference="",
+    ):
+
+        raw_data = (
+            payment.raw_response.get("data", {})
+            if isinstance(payment.raw_response, dict)
+            else {}
+        )
+        transaction = (
+            raw_data.get("transaction", {})
+            if isinstance(raw_data, dict)
+            else {}
+        )
+
+        references = [
+            first_reference,
+            payment.merchant_reference,
+            payment.checkout_reference,
+            raw_data.get("orderReference"),
+            raw_data.get("order_reference"),
+            raw_data.get("reference"),
+            raw_data.get("merchantTxRef"),
+            transaction.get("orderReference"),
+            transaction.get("reference"),
+            transaction.get("merchantTxRef"),
+            payment.order.payment_reference,
+            payment.order.checkout_reference,
+        ]
+
+        unique = []
+
+        for reference in references:
+            if reference and reference not in unique:
+                unique.append(reference)
+
+        return unique
 
     @classmethod
     def handle_event(cls, payload):
@@ -694,17 +737,10 @@ class PaymentService:
                 f"No local payment exists for {merchant_reference}."
             )
 
-        references = []
-
-        for reference in (
-            merchant_reference,
-            payment.merchant_reference,
-            payment.checkout_reference,
-            payment.order.payment_reference,
-            payment.order.checkout_reference,
-        ):
-            if reference and reference not in references:
-                references.append(reference)
+        references = cls.reference_candidates_for_payment(
+            payment,
+            first_reference=merchant_reference,
+        )
 
         raw = None
         last_error = None
@@ -829,10 +865,23 @@ class PaymentService:
             "status",
             "responsecode",
             "responsestatus",
+            "responsemessage",
+            "gatewayresponse",
+            "processorresponse",
             "paymentstatus",
+            "paymentstate",
             "orderstatus",
             "statuscode",
             "transactionstatus",
+            "transactionstate",
+            "transactionresponsecode",
+            "transactionresponsemessage",
+        }
+        boolean_success_keys = {
+            "paid",
+            "ispaid",
+            "paymentpaid",
+            "paymentsuccessful",
         }
 
         tokens = []
@@ -846,6 +895,16 @@ class PaymentService:
                             (
                                 normalized_key,
                                 str(child).strip().lower(),
+                            )
+                        )
+                    if (
+                        normalized_key in boolean_success_keys
+                        and child is True
+                    ):
+                        tokens.append(
+                            (
+                                normalized_key,
+                                "paid",
                             )
                         )
                     collect(child)

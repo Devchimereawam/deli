@@ -208,8 +208,22 @@ class OrderService:
         )
 
         cls.notify_deli_admin_settlement_preview(order)
+        cls.clear_other_awaiting_payment_orders(order)
 
         return order
+
+    @staticmethod
+    def clear_other_awaiting_payment_orders(order):
+
+        Order.objects.filter(
+            customer=order.customer,
+            status=Order.STATUS_AWAITING_PAYMENT,
+        ).exclude(
+            id=order.id,
+        ).update(
+            status=Order.STATUS_CANCELLED,
+            updated_at=timezone.now(),
+        )
 
     @staticmethod
     def notify_customer_payment_confirmed(order):
