@@ -63,7 +63,7 @@ class HomeHandler:
         hot_text = ""
 
         if hot_meals:
-            hot_text = "🔥 *Hot Meals Near You*\n"
+            hot_text = "🔥 *Hot Meals Near You*\n\n"
 
             for index, item in enumerate(
                 hot_meals,
