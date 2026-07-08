@@ -196,7 +196,9 @@ class RouterService:
                 customer,
             )
 
-        if command.upper().startswith("PAY-"):
+        reference = command.upper().strip().strip(".,;: ")
+
+        if reference.startswith("PAY-"):
             StateService.set(
                 conversation,
                 ORDER_STATUS,
@@ -204,7 +206,7 @@ class RouterService:
             )
             if cls._confirm_payment_reference(
                 phone,
-                command.upper(),
+                reference,
             ):
                 return
             return cls._show_orders(

@@ -18,6 +18,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from orders.models import Order
 from orders.services.order_service import OrderService
 from payments.models import Payment
 
@@ -790,7 +791,7 @@ class PaymentService:
             )
             .filter(
                 Q(status=Payment.STATUS_PENDING)
-                | Q(order__status=Payment.STATUS_AWAITING_PAYMENT)
+                | Q(order__status=Order.STATUS_AWAITING_PAYMENT)
             )
             .order_by(
                 "-created_at",
