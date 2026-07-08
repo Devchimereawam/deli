@@ -214,21 +214,118 @@ class OrderService:
     @staticmethod
     def notify_customer_payment_confirmed(order):
 
+        from users.constants import ORDER_STATUS
+        from users.models import ConversationState
+        from whatsapp.services.state_service import StateService
         from whatsapp.services.whatsapp_service import WhatsAppService
 
-        WhatsAppService.send_buttons(
-            order.customer.phone,
-            f"""✅ Payment confirmed for order *{order.checkout_reference}*.
-
-We have received your order and are confirming the restaurant and delivery rider now.
-
-You can type *track* at any time to check what is happening next.""",
-            [
-                ("track", "Track order"),
-                ("home", "Home"),
-            ],
-            "Deli will keep the updates here.",
+        conversation, _ = ConversationState.objects.get_or_create(
+            customer=order.customer,
         )
+        StateService.set_order(
+            conversation,
+            order,
+        )
+        StateService.set(
+            conversation,
+            ORDER_STATUS,
+        )
+
+        WhatsAppService.send_list(
+            order.customer.phone,
+            f"""✅ *Payment successful*
+
+Your food is on its way.
+
+Your rider will contact you when they get to your address.
+
+Thanks for using Deli.
+
+{OrderService.order_tracking_text(order)}""",
+            OrderService.post_payment_action_rows(),
+            "Order actions",
+            "You can also reply 1, 2, 3, 4, or 5.",
+        )
+
+    @staticmethod
+    def post_payment_action_rows():
+
+        return [
+            (
+                "track_order",
+                "Track Order",
+                "See the current delivery stage",
+            ),
+            (
+                "confirm_delivered",
+                "Confirm Delivered",
+                "Tell us the meal has arrived",
+            ),
+            (
+                "review",
+                "Review",
+                "Rate the meal or restaurant",
+            ),
+            (
+                "end_session",
+                "End Session",
+                "Close this chat flow",
+            ),
+            (
+                "home",
+                "Keep Shopping",
+                "Back to the main menu",
+            ),
+        ]
+
+    @staticmethod
+    def order_tracking_text(order):
+
+        order.refresh_from_db()
+
+        restaurant_ready = order.status in (
+            Order.STATUS_ACCEPTED,
+            Order.STATUS_PREPARING,
+            Order.STATUS_ON_THE_WAY,
+            Order.STATUS_DELIVERED,
+        )
+        picked_up = order.status in (
+            Order.STATUS_ON_THE_WAY,
+            Order.STATUS_DELIVERED,
+        )
+        on_the_way = order.status in (
+            Order.STATUS_ON_THE_WAY,
+            Order.STATUS_DELIVERED,
+        )
+
+        if order.status == Order.STATUS_PAID:
+            current = "Payment confirmed. We are confirming the restaurant and rider."
+        elif order.status in (
+            Order.STATUS_ACCEPTED,
+            Order.STATUS_PREPARING,
+        ):
+            current = "Ready at restaurant."
+        elif order.status == Order.STATUS_ON_THE_WAY:
+            current = "Picked up and on the way to you."
+        elif order.status == Order.STATUS_DELIVERED:
+            current = "Delivered."
+        elif order.status == Order.STATUS_AWAITING_PAYMENT:
+            current = "Awaiting payment confirmation."
+        else:
+            current = order.get_status_display()
+
+        def mark(done):
+            return "Done" if done else "Waiting"
+
+        return f"""📦 *Order:* {order.checkout_reference}
+🏪 *Restaurant:* {order.restaurant.name}
+🚚 *Rider:* {order.delivery_rider.name if order.delivery_rider else DeliveryService.DELI_DASH_NAME}
+
+*Current:* {current}
+
+1. Ready at restaurant: {mark(restaurant_ready)}
+2. Picked up: {mark(picked_up)}
+3. On your way to you: {mark(on_the_way)}"""
 
     @staticmethod
     def _deduct_inventory(order):
@@ -646,7 +743,7 @@ Notes:
                 else ""
             )
 
-            WhatsAppService.send_text(
+            WhatsAppService.send_list(
                 order.customer.phone,
                 f"""✅ Your order *{order.checkout_reference}* is confirmed.
 
@@ -655,7 +752,12 @@ Notes:
 Delivery:
 {order.delivery_rider.name if order.delivery_rider else DeliveryService.DELI_DASH_NAME}
 
-We'll keep you posted.{partner_note}"""
+We'll keep you posted.{partner_note}
+
+{cls.order_tracking_text(order)}""",
+                cls.post_payment_action_rows(),
+                "Order actions",
+                "Reply 1, 2, 3, 4, or 5.",
             )
 
     @classmethod
@@ -791,11 +893,16 @@ We'll keep you posted.{partner_note}"""
                     ]
                 )
 
-                WhatsAppService.send_text(
+                WhatsAppService.send_list(
                     order.customer.phone,
                     f"""🚚 Your order *{order.checkout_reference}* is on the way.
 
-The food has been handed to the rider."""
+The food has been handed to the rider.
+
+{cls.order_tracking_text(order)}""",
+                    cls.post_payment_action_rows(),
+                    "Order actions",
+                    "Reply 1, 2, 3, 4, or 5.",
                 )
 
                 WhatsAppService.send_text(

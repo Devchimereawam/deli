@@ -33,14 +33,6 @@ class SearchService:
             if city_matches.exists():
                 return city_matches
 
-        if address.state:
-            state_matches = queryset.filter(
-                area__city__state=address.state,
-            )
-
-            if state_matches.exists():
-                return state_matches
-
         return Restaurant.objects.none()
 
     @staticmethod

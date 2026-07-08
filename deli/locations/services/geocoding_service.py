@@ -15,6 +15,51 @@ class GeocodingService:
     )
 
     @classmethod
+    def _address_from_result(cls, result):
+
+        address = {
+            "formatted_address": result.get(
+                "formatted_address",
+                "",
+            ),
+            "state": None,
+            "city": None,
+            "area": None,
+        }
+
+        geometry = result.get("geometry", {})
+        location = geometry.get("location", {})
+
+        if "lat" in location:
+            address["latitude"] = location["lat"]
+
+        if "lng" in location:
+            address["longitude"] = location["lng"]
+
+        for component in result.get("address_components", []):
+
+            types = component.get("types", [])
+            long_name = component.get("long_name", "")
+
+            if "administrative_area_level_1" in types:
+                address["state"] = long_name
+
+            elif (
+                "locality" in types
+                or "administrative_area_level_2" in types
+            ):
+                address["city"] = long_name
+
+            elif (
+                "sublocality" in types
+                or "sublocality_level_1" in types
+                or "neighborhood" in types
+            ):
+                address["area"] = long_name
+
+        return address
+
+    @classmethod
     def reverse_geocode(cls, latitude, longitude):
 
         api_key = os.getenv(
@@ -41,38 +86,41 @@ class GeocodingService:
         if not data.get("results"):
             return None
 
-        result = data["results"][0]
+        return cls._address_from_result(data["results"][0])
 
-        address = {
-            "formatted_address": result.get(
-                "formatted_address",
-                "",
-            ),
-            "state": None,
-            "city": None,
-            "area": None,
-        }
+    @classmethod
+    def geocode_address(cls, address):
 
-        for component in result["address_components"]:
+        api_key = os.getenv(
+            "GOOGLE_MAPS_API_KEY"
+        )
 
-            types = component["types"]
+        if not api_key:
+            return {
+                "formatted_address": address,
+                "state": None,
+                "city": None,
+                "area": None,
+            }
 
-            if "administrative_area_level_1" in types:
-                address["state"] = component["long_name"]
+        response = requests.get(
+            cls.BASE_URL,
+            params={
+                "address": address,
+                "key": api_key,
+            },
+            timeout=10,
+        )
 
-            elif (
-                "locality" in types
-                or "administrative_area_level_2" in types
-            ):
-                address["city"] = component["long_name"]
+        if response.status_code != 200:
+            return None
 
-            elif (
-                "sublocality" in types
-                or "neighborhood" in types
-            ):
-                address["area"] = component["long_name"]
+        data = response.json()
 
-        return address
+        if not data.get("results"):
+            return None
+
+        return cls._address_from_result(data["results"][0])
     
     @classmethod
     def save_customer_location_from_text(

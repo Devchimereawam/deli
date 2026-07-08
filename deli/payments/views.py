@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 def payment_return(request):
 
     reference = (
-        request.GET.get("orderReference")
-        or request.GET.get("reference")
+        request.GET.get("reference")
         or request.GET.get("merchantTxRef")
         or request.GET.get("merchantReference")
+        or request.GET.get("orderReference")
         or request.GET.get("order_reference")
         or ""
     )
@@ -30,6 +30,7 @@ def payment_return(request):
         return _payment_return_page(
             title="Return to WhatsApp",
             message="We received the payment return, but Nomba did not include an order reference. Return to WhatsApp and type track.",
+            auto_redirect=True,
         )
 
     try:
@@ -45,6 +46,7 @@ def payment_return(request):
                 f"Nomba returned reference {escape(reference)}, but Deli could not match it locally yet. "
                 "Return to WhatsApp and type track."
             ),
+            auto_redirect=True,
         )
     except Exception as exc:
         logger.exception("Nomba checkout requery failed: %s", exc)
@@ -53,6 +55,7 @@ def payment_return(request):
             message=(
                 "Nomba is still processing this checkout. Return to WhatsApp and type track in a moment."
             ),
+            auto_redirect=True,
         )
 
     if payment.status == Payment.STATUS_SUCCESS:
@@ -62,7 +65,7 @@ def payment_return(request):
                 f"Order {escape(payment.order.checkout_reference)} is paid. "
                 "Deli has continued the order in WhatsApp."
             ),
-            whatsapp_text="track order",
+            whatsapp_text="payment successful",
             auto_redirect=True,
         )
 
@@ -71,6 +74,7 @@ def payment_return(request):
             title="Payment Failed",
             message="Nomba did not approve this payment. Return to WhatsApp and choose payment again.",
             whatsapp_text="cart",
+            auto_redirect=True,
         )
 
     return _payment_return_page(
@@ -79,7 +83,8 @@ def payment_return(request):
             f"Order {escape(payment.order.checkout_reference)} is still processing. "
             "Return to WhatsApp and type track in a moment."
         ),
-        whatsapp_text="track order",
+        whatsapp_text="payment successful",
+        auto_redirect=True,
     )
 
 
@@ -101,8 +106,14 @@ def _payment_return_page(
             f"https://wa.me/{public_number}?text={quote(whatsapp_text)}"
         )
 
-    redirect_meta = (
-        f'<meta http-equiv="refresh" content="3;url={escape(whatsapp_url)}">'
+    redirect_script = (
+        f"""
+  <meta http-equiv="refresh" content="2;url={escape(whatsapp_url)}">
+  <script>
+    window.setTimeout(function () {{
+      window.location.href = "{escape(whatsapp_url)}";
+    }}, 1200);
+  </script>"""
         if auto_redirect and whatsapp_url
         else ""
     )
@@ -119,7 +130,7 @@ def _payment_return_page(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  {redirect_meta}
+  {redirect_script}
   <title>{escape(title)} | Deli</title>
   <style>
     body {{

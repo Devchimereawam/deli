@@ -1,9 +1,9 @@
 from locations.constants import DEFAULT_ADDRESS_LABEL
-from locations.models import Address, Area
+from locations.models import Address
 from locations.utils import (
-    find_area,
     find_city,
-    find_state,
+    resolve_location_parts,
+    normalize_location_text,
 )
 
 from .geocoding_service import GeocodingService
@@ -24,83 +24,24 @@ class LocationService:
             longitude,
         )
 
-        if not result:
+        result = result or {}
 
-            address = customer.default_address
-
-            if address:
-
-                address.latitude = latitude
-                address.longitude = longitude
-                address.save()
-
-                return address
-
-            return Address.objects.create(
-                customer=customer,
-                label=DEFAULT_ADDRESS_LABEL,
-                latitude=latitude,
-                longitude=longitude,
-                is_default=True,
-            )
-
-        state = find_state(
-            result.get("state"),
+        formatted_address = (
+            result.get("formatted_address")
+            or f"{latitude}, {longitude}"
         )
 
-        city = find_city(
-            state,
-            result.get("city"),
-        )
-
-        area = find_area(
-            city,
-            result.get("area"),
-        )
-
-        address = customer.default_address
-
-        if address:
-
-            Address.objects.filter(
-                customer=customer,
-                is_default=True,
-            ).exclude(
-                pk=address.pk,
-            ).update(
-                is_default=False,
-            )
-
-        if address:
-
-            address.latitude = latitude
-            address.longitude = longitude
-            address.formatted_address = result.get(
-                "formatted_address",
-                "",
-            )
-            address.state = state
-            address.city = city
-            address.area = area
-            address.is_default = True
-
-            address.save()
-
-            return address
-
-        return Address.objects.create(
+        return cls._save_default_address(
             customer=customer,
-            label=DEFAULT_ADDRESS_LABEL,
             latitude=latitude,
             longitude=longitude,
-            formatted_address=result.get(
-                "formatted_address",
-                "",
-            ),
-            state=state,
-            city=city,
-            area=area,
-            is_default=True,
+            formatted_address=formatted_address,
+            candidates=[
+                result.get("area"),
+                result.get("city"),
+                result.get("state"),
+                formatted_address,
+            ],
         )
     
     @classmethod
@@ -110,45 +51,105 @@ class LocationService:
         address,
     ):
 
+        typed_city = find_city(
+            None,
+            address,
+        )
+
+        if (
+            typed_city
+            and normalize_location_text(address)
+            == normalize_location_text(typed_city.name)
+        ):
+            return cls._save_default_address(
+                customer=customer,
+                latitude=None,
+                longitude=None,
+                formatted_address=typed_city.name,
+                candidates=[
+                    typed_city.name,
+                ],
+                fallback_area_marker=False,
+            )
+
         result = GeocodingService.geocode_address(
             address,
         )
 
-        if not result:
-            current = customer.default_address
-            fallback_area = (
-                current.area
-                if current and current.area
-                else Area.objects.first()
-            )
-            fallback_city = fallback_area.city if fallback_area else None
-            fallback_state = (
-                fallback_city.state
-                if fallback_city
-                else None
-            )
+        result = result or {
+            "formatted_address": address,
+        }
 
-            if current:
-                current.formatted_address = address
-                current.area = fallback_area
-                current.city = fallback_city
-                current.state = fallback_state
-                current.is_default = True
-                current.save()
-                return current
-
-            return Address.objects.create(
-                customer=customer,
-                label=DEFAULT_ADDRESS_LABEL,
-                formatted_address=address,
-                area=fallback_area,
-                city=fallback_city,
-                state=fallback_state,
-                is_default=True,
-            )
-
-        return cls.save_customer_location(
+        return cls._save_default_address(
             customer=customer,
-            latitude=result["latitude"],
-            longitude=result["longitude"],
+            latitude=result.get("latitude"),
+            longitude=result.get("longitude"),
+            formatted_address=result.get(
+                "formatted_address",
+                address,
+            ),
+            candidates=[
+                address,
+                result.get("area"),
+                result.get("city"),
+                result.get("state"),
+                result.get("formatted_address"),
+            ],
+        )
+
+    @classmethod
+    def _save_default_address(
+        cls,
+        customer,
+        formatted_address,
+        candidates,
+        latitude=None,
+        longitude=None,
+        fallback_area_marker=True,
+    ):
+
+        current = customer.default_address
+        fallback_area = (
+            current.area
+            if fallback_area_marker and current and current.area
+            else None
+        )
+
+        state, city, area = resolve_location_parts(
+            *candidates,
+            latitude=latitude,
+            longitude=longitude,
+            fallback_area=fallback_area,
+        )
+
+        Address.objects.filter(
+            customer=customer,
+            is_default=True,
+        ).exclude(
+            pk=current.pk if current else None,
+        ).update(
+            is_default=False,
+        )
+
+        if current:
+            current.latitude = latitude
+            current.longitude = longitude
+            current.formatted_address = formatted_address
+            current.state = state
+            current.city = city
+            current.area = area
+            current.is_default = True
+            current.save()
+            return current
+
+        return Address.objects.create(
+            customer=customer,
+            label=DEFAULT_ADDRESS_LABEL,
+            formatted_address=formatted_address,
+            latitude=latitude,
+            longitude=longitude,
+            state=state,
+            city=city,
+            area=area,
+            is_default=True,
         )

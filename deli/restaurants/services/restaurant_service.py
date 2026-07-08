@@ -88,24 +88,6 @@ class RestaurantService:
                     "id",
                 )
 
-        # ---------------------------------
-        # 3. Same State
-        # ---------------------------------
-
-        if address.state:
-
-            restaurants = queryset.filter(
-                area__city__state=address.state,
-            )
-
-            if restaurants.exists():
-
-                return restaurants.order_by(
-                    "-rating",
-                    "name",
-                    "id",
-                )
-
         return Restaurant.objects.none()
 
     @staticmethod

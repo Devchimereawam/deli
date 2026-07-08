@@ -182,11 +182,6 @@ class RouterService:
         if command in (
             "orders",
             "my orders",
-            "track",
-            "track order",
-            "where is my order",
-            "paid",
-            "i have paid",
         ):
             StateService.set(
                 conversation,
@@ -196,6 +191,29 @@ class RouterService:
             return cls._show_orders(
                 phone,
                 customer,
+            )
+
+        if command in (
+            "track",
+            "track order",
+            "track_order",
+            "where is my order",
+            "paid",
+            "i have paid",
+            "payment successful",
+            "payment success",
+            "successful payment",
+        ):
+            StateService.set(
+                conversation,
+                ORDER_STATUS,
+                push=True,
+            )
+            return cls._handle_order_status_action(
+                phone,
+                customer,
+                conversation,
+                "track_order",
             )
 
         state = StateService.get(
@@ -349,9 +367,11 @@ class RouterService:
             )
 
         if state == ORDER_STATUS:
-            return cls._show_orders(
+            return cls._handle_order_status_action(
                 phone,
                 customer,
+                conversation,
+                command,
             )
 
         if state == REGISTER_RESTAURANT:
@@ -1143,20 +1163,14 @@ Type the food or restaurant name."""
             customer,
         )
 
-    @staticmethod
+    @classmethod
     def _show_orders(
+        cls,
         phone,
         customer,
     ):
 
-        orders = list(
-            customer.orders.select_related(
-                "restaurant",
-                "delivery_rider",
-            ).order_by(
-                "-created_at",
-            )[:5]
-        )
+        orders = cls._recent_customer_orders(customer)
 
         if not orders:
             WhatsAppService.send_text(
@@ -1170,21 +1184,265 @@ Reply 1 to browse restaurants."""
             )
             return
 
-        text = "📦 *My Orders*\n\n"
+        conversation = customer.conversation
+        conversation.selected_order = None
+        conversation.save(
+            update_fields=[
+                "selected_order",
+                "updated_at",
+            ]
+        )
 
-        for order in orders:
+        rows = []
+        text = "📦 *My Orders*\n\nChoose an order to track.\n\n"
+
+        for index, order in enumerate(orders, start=1):
             text += (
-                f"*{order.checkout_reference}*\n"
+                f"{index}. *{order.checkout_reference}*\n"
                 f"{order.restaurant.name}\n"
                 f"Status: {order.get_status_display()}\n"
                 f"Total: {money(order.total)}\n\n"
             )
+            rows.append(
+                (
+                    f"order:{order.id}",
+                    f"Order {index}",
+                    f"{order.restaurant.name} · {order.get_status_display()}",
+                )
+            )
 
-        text += NAVIGATION
+        rows.append(
+            (
+                "home",
+                "Keep Shopping",
+                "Back to the main menu",
+            )
+        )
 
-        WhatsAppService.send_text(
+        WhatsAppService.send_list(
             phone,
             text,
+            rows,
+            "Choose order",
+            "You can also reply with the order number.",
+        )
+
+    @classmethod
+    def _recent_customer_orders(cls, customer):
+
+        return list(
+            customer.orders.select_related(
+                "restaurant",
+                "delivery_rider",
+            ).prefetch_related(
+                "items",
+            ).order_by(
+                "-created_at",
+            )[:5]
+        )
+
+    @classmethod
+    def _latest_trackable_order(cls, customer):
+
+        orders = cls._recent_customer_orders(customer)
+
+        for order in orders:
+            if order.status not in (
+                Order.STATUS_CANCELLED,
+                Order.STATUS_DELIVERED,
+            ):
+                return order
+
+        return orders[0] if orders else None
+
+    @classmethod
+    def _order_from_command(
+        cls,
+        customer,
+        command,
+    ):
+
+        orders = cls._recent_customer_orders(customer)
+
+        if command.startswith("order:"):
+            try:
+                order_id = int(
+                    command.split(
+                        ":",
+                        1,
+                    )[1]
+                )
+            except (IndexError, ValueError):
+                return None
+
+            for order in orders:
+                if order.id == order_id:
+                    return order
+
+            return None
+
+        if command.isdigit():
+            index = int(command) - 1
+            if 0 <= index < len(orders):
+                return orders[index]
+
+        return None
+
+    @classmethod
+    def _show_order_actions(
+        cls,
+        phone,
+        customer,
+        conversation,
+        order,
+    ):
+
+        StateService.set_order(
+            conversation,
+            order,
+        )
+        StateService.set(
+            conversation,
+            ORDER_STATUS,
+        )
+
+        WhatsAppService.send_list(
+            phone,
+            OrderService.order_tracking_text(order),
+            OrderService.post_payment_action_rows(),
+            "Order actions",
+            "Reply 1, 2, 3, 4, or 5.",
+        )
+
+    @classmethod
+    def _handle_order_status_action(
+        cls,
+        phone,
+        customer,
+        conversation,
+        command,
+    ):
+
+        selected_order = None
+
+        if command.startswith("order:") or (
+            command.isdigit()
+            and not conversation.selected_order
+        ):
+            selected_order = cls._order_from_command(
+                customer,
+                command,
+            )
+
+        if selected_order:
+            return cls._show_order_actions(
+                phone,
+                customer,
+                conversation,
+                selected_order,
+            )
+
+        order = (
+            conversation.selected_order
+            or cls._latest_trackable_order(customer)
+        )
+
+        if not order:
+            return cls._show_orders(
+                phone,
+                customer,
+            )
+
+        if command in (
+            "1",
+            "track",
+            "track order",
+            "track_order",
+            "where is my order",
+            "payment successful",
+            "payment success",
+        ):
+            return cls._show_order_actions(
+                phone,
+                customer,
+                conversation,
+                order,
+            )
+
+        if command in (
+            "2",
+            "confirm delivered",
+            "confirm_delivered",
+            "delivered",
+            "meal delivered",
+        ):
+            if order.status == Order.STATUS_DELIVERED:
+                WhatsAppService.send_text(
+                    phone,
+                    f"✅ Order *{order.checkout_reference}* is already marked delivered.",
+                )
+                return cls._show_order_actions(
+                    phone,
+                    customer,
+                    conversation,
+                    order,
+                )
+
+            OrderService.mark_delivered(order)
+            return
+
+        if command in (
+            "3",
+            "review",
+            "rate",
+        ):
+            StateService.set_order(
+                conversation,
+                order,
+            )
+            return cls._start_review(
+                phone,
+                customer,
+                conversation,
+            )
+
+        if command in (
+            "4",
+            "end",
+            "end session",
+            "end_session",
+            "endsession",
+        ):
+            StateService.reset(
+                conversation,
+                HOME,
+            )
+            WhatsAppService.send_text(
+                phone,
+                "✅ Session ended. Type hey whenever you want to order again.",
+            )
+            return
+
+        if command in (
+            "5",
+            "home",
+            "keep shopping",
+            "keep_shopping",
+            "shop",
+        ):
+            StateService.reset(
+                conversation,
+                HOME,
+            )
+            return HomeHandler.show(
+                phone,
+                customer,
+                conversation,
+            )
+
+        return cls._show_orders(
+            phone,
+            customer,
         )
 
     @staticmethod
@@ -1559,23 +1817,34 @@ Account Name: Tunde Express"""
         conversation,
     ):
 
-        order = (
-            customer.orders
-            .filter(
-                status__in=[
-                    Order.STATUS_DELIVERED,
-                    Order.STATUS_ACCEPTED,
-                    Order.STATUS_ON_THE_WAY,
-                ]
+        order = conversation.selected_order
+
+        if (
+            not order
+            or order.status
+            not in [
+                Order.STATUS_DELIVERED,
+                Order.STATUS_ACCEPTED,
+                Order.STATUS_ON_THE_WAY,
+            ]
+        ):
+            order = (
+                customer.orders
+                .filter(
+                    status__in=[
+                        Order.STATUS_DELIVERED,
+                        Order.STATUS_ACCEPTED,
+                        Order.STATUS_ON_THE_WAY,
+                    ]
+                )
+                .select_related(
+                    "restaurant",
+                )
+                .order_by(
+                    "-created_at",
+                )
+                .first()
             )
-            .select_related(
-                "restaurant",
-            )
-            .order_by(
-                "-created_at",
-            )
-            .first()
-        )
 
         if not order:
             WhatsAppService.send_text(

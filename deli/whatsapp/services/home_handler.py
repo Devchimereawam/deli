@@ -25,33 +25,37 @@ class HomeHandler:
         )
 
         hot_meals = []
-        best_restaurants = []
 
         address = customer.default_address
 
-        if address and address.area:
-            hot_meals = list(
-                MenuItem.objects.filter(
+        if address:
+            meal_scope = MenuItem.objects.filter(
+                restaurant__is_active=True,
+                is_available=True,
+            )
+
+            if address.area and meal_scope.filter(
+                restaurant__area=address.area,
+            ).exists():
+                meal_scope = meal_scope.filter(
                     restaurant__area=address.area,
-                    restaurant__is_active=True,
-                    is_available=True,
                 )
-                .select_related(
+            elif address.city and meal_scope.filter(
+                restaurant__area__city=address.city,
+            ).exists():
+                meal_scope = meal_scope.filter(
+                    restaurant__area__city=address.city,
+                )
+            else:
+                meal_scope = MenuItem.objects.none()
+
+            hot_meals = list(
+                meal_scope.select_related(
                     "restaurant",
-                )
-                .order_by(
+                ).order_by(
                     "-is_featured",
                     "-restaurant__rating",
                     "price",
-                    "name",
-                )[:3]
-            )
-
-            best_restaurants = list(
-                address.area.restaurants.filter(
-                    is_active=True,
-                ).order_by(
-                    "-rating",
                     "name",
                 )[:3]
             )
@@ -72,22 +76,6 @@ class HomeHandler:
 
             hot_text += "\n"
 
-        best_text = ""
-
-        if best_restaurants:
-            best_text = "⭐ *Best Rated Restaurants*\n"
-
-            for index, restaurant in enumerate(
-                best_restaurants,
-                start=1,
-            ):
-                best_text += (
-                    f"{index}. {restaurant.name}\n"
-                    f"   ⭐ ({restaurant.rating}) ({restaurant.total_reviews})\n"
-                )
-
-            best_text += "\n"
-        
         WhatsAppService.send_list(
             phone,
             f"""🍽️ *Deli*
@@ -108,7 +96,7 @@ Stop asking or going out just to see what they have. View real-time menus and or
 
 ────────────
 
-{hot_text}{best_text}
+{hot_text}
 ────────────
 
 😋 *What are you craving today?*

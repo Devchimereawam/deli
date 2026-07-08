@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-django = "*"
 djangorestframework = "*"
 pillow = "*"
 psycopg2-binary = "*"
@@ -12,6 +11,7 @@ python-dotenv = "*"
 requests = "*"
 geopy = "*"
 django-filter = "*"
+django = "*"
 
 [dev-packages]
 

@@ -28,6 +28,9 @@ web/.env.development
 # Logs
 *.log
 
+# Markdown docs hidden for now
+*.md
+
 *md
 
 FULL_APP_DOCUMENTATION.md

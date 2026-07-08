@@ -4,7 +4,12 @@ import hmac
 import logging
 from decimal import Decimal
 from datetime import timedelta
-from urllib.parse import urlparse
+from urllib.parse import (
+    parse_qsl,
+    urlencode,
+    urlparse,
+    urlunparse,
+)
 from uuid import uuid4
 
 import requests
@@ -12,6 +17,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from orders.services.order_service import OrderService
@@ -159,12 +165,31 @@ class PaymentService:
 
         return callback_url
 
+    @staticmethod
+    def callback_url_with_reference(
+        callback_url,
+        reference,
+    ):
+
+        parsed = urlparse(callback_url)
+        query = dict(parse_qsl(parsed.query))
+        query["reference"] = reference
+
+        return urlunparse(
+            parsed._replace(
+                query=urlencode(query),
+            )
+        )
+
     @classmethod
     def create_checkout(cls, order):
 
         merchant_ref = f"PAY-{uuid4().hex.upper()}"
 
-        callback_url = cls.callback_url()
+        callback_url = cls.callback_url_with_reference(
+            cls.callback_url(),
+            merchant_ref,
+        )
 
         order_payload = {
             "orderReference": merchant_ref,
@@ -214,6 +239,11 @@ class PaymentService:
 
         raw = response.json()
         data = raw.get("data", {})
+        nomba_reference = (
+            data.get("orderReference")
+            or data.get("order_reference")
+            or merchant_ref
+        )
         checkout_url = (
             data.get("checkoutUrl")
             or data.get("checkoutLink")
@@ -229,7 +259,7 @@ class PaymentService:
         payment = Payment.objects.create(
             order=order,
             merchant_reference=merchant_ref,
-            checkout_reference=merchant_ref,
+            checkout_reference=nomba_reference,
             checkout_url=checkout_url,
             amount=order.total,
             raw_response=raw,
@@ -457,6 +487,11 @@ class PaymentService:
         data = payload.get("data", {})
 
         candidates = [
+            payload.get("merchantTxRef"),
+            payload.get("merchant_reference"),
+            payload.get("orderReference"),
+            payload.get("order_reference"),
+            payload.get("reference"),
             data.get("merchantTxRef"),
             data.get("merchant_reference"),
             data.get("orderReference"),
@@ -472,6 +507,33 @@ class PaymentService:
                 return candidate
 
         return ""
+
+    @classmethod
+    def payment_for_reference(
+        cls,
+        reference,
+        lock=False,
+    ):
+
+        queryset = Payment.objects.select_related(
+            "order",
+        )
+
+        if lock:
+            queryset = queryset.select_for_update()
+
+        return (
+            queryset
+            .filter(
+                Q(merchant_reference=reference)
+                | Q(checkout_reference=reference)
+                | Q(order__payment_reference=reference)
+                | Q(order__checkout_reference=reference)
+                | Q(raw_response__data__orderReference=reference)
+                | Q(raw_response__data__order_reference=reference)
+            )
+            .first()
+        )
 
     @classmethod
     def handle_event(cls, payload):
@@ -514,33 +576,48 @@ class PaymentService:
     ):
 
         with transaction.atomic():
-            payment = (
-                Payment.objects
-                .select_for_update()
-                .select_related("order")
-                .get(
-                    merchant_reference=merchant_reference,
+            payment = cls.payment_for_reference(
+                merchant_reference,
+                lock=True,
+            )
+
+            if not payment:
+                raise Payment.DoesNotExist(
+                    f"No local payment exists for {merchant_reference}."
                 )
-            )
 
-            if payment.status == Payment.STATUS_SUCCESS:
-                return payment
+            if payment.status != Payment.STATUS_SUCCESS:
+                payment.status = Payment.STATUS_SUCCESS
+                payment.raw_response = payload
+                payment.paid_at = timezone.now()
+                payment.save(
+                    update_fields=[
+                        "status",
+                        "raw_response",
+                        "paid_at",
+                        "updated_at",
+                    ]
+                )
 
-            payment.status = Payment.STATUS_SUCCESS
-            payment.raw_response = payload
-            payment.paid_at = timezone.now()
-            payment.save(
-                update_fields=[
-                    "status",
-                    "raw_response",
-                    "paid_at",
-                    "updated_at",
-                ]
-            )
+        payment.order.refresh_from_db()
 
-        OrderService.mark_paid(payment.order)
-        OrderService.notify_customer_payment_confirmed(payment.order)
-        OrderService.ask_providers_availability(payment.order)
+        if payment.order.status in (
+            payment.order.STATUS_PENDING,
+            payment.order.STATUS_AWAITING_PAYMENT,
+        ):
+            OrderService.mark_paid(payment.order)
+            payment.order.refresh_from_db()
+            OrderService.notify_customer_payment_confirmed(payment.order)
+            OrderService.ask_providers_availability(payment.order)
+        elif (
+            payment.order.status == payment.order.STATUS_PAID
+            and payment.order.restaurant_availability_status
+            == payment.order.PROVIDER_PENDING
+            and payment.order.rider_availability_status
+            == payment.order.PROVIDER_PENDING
+        ):
+            OrderService.notify_customer_payment_confirmed(payment.order)
+            OrderService.ask_providers_availability(payment.order)
 
         return payment
 
@@ -551,11 +628,14 @@ class PaymentService:
         payload,
     ):
 
-        payment = Payment.objects.select_related(
-            "order",
-        ).get(
-            merchant_reference=merchant_reference,
+        payment = cls.payment_for_reference(
+            merchant_reference,
         )
+
+        if not payment:
+            raise Payment.DoesNotExist(
+                f"No local payment exists for {merchant_reference}."
+            )
 
         payment.status = Payment.STATUS_FAILED
         payment.raw_response = payload
@@ -605,39 +685,51 @@ class PaymentService:
     @classmethod
     def confirm_checkout(cls, merchant_reference):
 
-        payment = (
-            Payment.objects
-            .select_related("order")
-            .filter(merchant_reference=merchant_reference)
-            .first()
+        payment = cls.payment_for_reference(
+            merchant_reference,
         )
-
-        if not payment:
-            payment = (
-                Payment.objects
-                .select_related("order")
-                .filter(checkout_reference=merchant_reference)
-                .first()
-            )
 
         if not payment:
             raise Payment.DoesNotExist(
                 f"No local payment exists for {merchant_reference}."
             )
 
-        raw = cls.requery_checkout(payment.merchant_reference)
+        references = []
 
-        if cls._response_is_success(raw):
-            return cls.handle_payment_success(
-                payment.merchant_reference,
-                raw,
-            )
+        for reference in (
+            merchant_reference,
+            payment.merchant_reference,
+            payment.checkout_reference,
+            payment.order.payment_reference,
+            payment.order.checkout_reference,
+        ):
+            if reference and reference not in references:
+                references.append(reference)
 
-        if cls._response_is_failed(raw):
-            return cls.handle_payment_failed(
-                payment.merchant_reference,
-                raw,
-            )
+        raw = None
+        last_error = None
+
+        for reference in references:
+            try:
+                raw = cls.requery_checkout(reference)
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            if cls._response_is_success(raw):
+                return cls.handle_payment_success(
+                    reference,
+                    raw,
+                )
+
+            if cls._response_is_failed(raw):
+                return cls.handle_payment_failed(
+                    reference,
+                    raw,
+                )
+
+        if raw is None and last_error:
+            raise last_error
 
         payment.raw_response = raw
         payment.save(

@@ -65,18 +65,20 @@ class WhatsAppService:
     @classmethod
     def request_location(cls, phone):
 
-        cls.send_text(
+        return cls.send_text(
             phone,
-            """📍 Please share your delivery location.
+            """📍 *Set Delivery Location*
 
-Tap the ➕ attachment icon in WhatsApp and share your Live Location or Current Location.:
+Use *Live Location* or *Current Location* if you want restaurants near your exact area, or if you live in a large city with many areas.
 
-📍 Location
-→ Current Location
+To see restaurants across a whole city, simply type the city name.
 
-If WhatsApp can't determine your location, simply type your delivery address instead.
+Examples:
+Nsukka
+Enugu
+Lagos
 
-We'll use this to show nearby restaurants."""
+You can also type a full delivery address if you want us to save that address."""
         )
 
     @classmethod

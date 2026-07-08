@@ -1,5 +1,7 @@
 import os
 
+import requests
+
 from cart.services.cart_service import CartService
 from delivery.models import DeliveryRider
 from delivery.services import DeliveryService
@@ -620,11 +622,20 @@ Pay securely with Nomba:
                 order,
             )
         except Exception as exc:
+            if isinstance(exc, requests.RequestException):
+                reason = (
+                    "Nomba could not be reached from this server right now. "
+                    "If you are testing live, confirm NOMBA_BASE_URL uses https://api.nomba.com/v1. "
+                    "If you are testing sandbox, confirm the server has internet/DNS access to https://sandbox.nomba.com/v1."
+                )
+            else:
+                reason = str(exc)
+
             WhatsAppService.send_text(
                 phone,
                 f"""We could not start payment yet.
 
-Reason: {exc}
+Reason: {reason}
 
 Your cart is still safe. Please try again or type cart."""
                 + NAVIGATION,

@@ -29,17 +29,11 @@ class Command(BaseCommand):
                 f"No local payment found for {reference}."
             )
 
-        response = PaymentService.requery_checkout(
+        payment = PaymentService.confirm_checkout(
             payment.merchant_reference,
         )
 
-        status_text = str(response).lower()
-
-        if "success" in status_text or "paid" in status_text:
-            PaymentService.handle_payment_success(
-                payment.merchant_reference,
-                response,
-            )
+        if payment.status == Payment.STATUS_SUCCESS:
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Nomba reports success for {payment.merchant_reference}."
@@ -47,11 +41,7 @@ class Command(BaseCommand):
             )
             return
 
-        if "failed" in status_text or "cancel" in status_text:
-            PaymentService.handle_payment_failed(
-                payment.merchant_reference,
-                response,
-            )
+        if payment.status == Payment.STATUS_FAILED:
             self.stdout.write(
                 self.style.ERROR(
                     f"Nomba reports failure for {payment.merchant_reference}."
@@ -64,4 +54,4 @@ class Command(BaseCommand):
                 f"Nomba checkout is not successful yet for {payment.merchant_reference}."
             )
         )
-        self.stdout.write(str(response))
+        self.stdout.write(str(payment.raw_response))
