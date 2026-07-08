@@ -233,6 +233,7 @@ class RouterService:
             if cls._confirm_latest_pending_payment(
                 phone,
                 customer,
+                conversation.selected_order,
             ):
                 return
             return cls._handle_order_status_action(
@@ -1262,6 +1263,8 @@ Reply 1 to browse restaurants."""
                 "delivery_rider",
             ).prefetch_related(
                 "items",
+            ).exclude(
+                status=Order.STATUS_CANCELLED,
             ).order_by(
                 "-created_at",
             )[:5]
@@ -1337,7 +1340,7 @@ Reply 1 to browse restaurants."""
             OrderService.order_tracking_text(order),
             OrderService.post_payment_action_rows(),
             "Order actions",
-            "Reply 1, 2, 3, 4, or 5.",
+            "Reply 1, 2, 3, 4, 5, or 6.",
         )
 
     @classmethod
@@ -1360,6 +1363,7 @@ Reply 1 to browse restaurants."""
         ) and cls._confirm_latest_pending_payment(
             phone,
             customer,
+            conversation.selected_order,
         ):
             return
 
@@ -1480,6 +1484,25 @@ Reply 1 to browse restaurants."""
                 conversation,
             )
 
+        if command in (
+            "6",
+            "remove",
+            "remove order",
+            "remove_order",
+            "delete",
+            "delete order",
+            "delete_order",
+            "cancel",
+            "cancel order",
+            "cancel_order",
+        ):
+            return cls._remove_order(
+                phone,
+                customer,
+                conversation,
+                order,
+            )
+
         return cls._show_orders(
             phone,
             customer,
@@ -1489,12 +1512,85 @@ Reply 1 to browse restaurants."""
     def _confirm_latest_pending_payment(
         phone,
         customer,
+        order=None,
     ):
+
+        def send_not_confirmed(payment):
+            references = PaymentService.reference_candidates_for_payment(
+                payment,
+            )
+            reference_text = references[0] if references else payment.merchant_reference
+
+            WhatsAppService.send_text(
+                phone,
+                f"""We checked Nomba, but this order is not confirmed as paid on Deli yet.
+
+Order: *{payment.order.checkout_reference}*
+Payment reference: *{reference_text}*
+Current Deli status: *{payment.order.get_status_display()}*
+
+If you just paid, wait 30 seconds and send *payment successful* again."""
+            )
+
+        if order and order.customer_id == customer.id:
+            payment = (
+                Payment.objects
+                .select_related(
+                    "order",
+                )
+                .filter(
+                    order=order,
+                )
+                .first()
+            )
+
+            if not payment:
+                return False
+
+            payment.order.refresh_from_db()
+
+            if payment.order.status == Order.STATUS_CANCELLED:
+                return False
+
+            if not (
+                payment.status == Payment.STATUS_PENDING
+                or payment.order.status == Order.STATUS_AWAITING_PAYMENT
+            ):
+                return False
+
+            try:
+                payment = PaymentService.confirm_payment_for_order(
+                    payment.order,
+                )
+            except Exception as exc:
+                WhatsAppService.send_text(
+                    phone,
+                    f"""We found payment for selected order *{order.checkout_reference}*, but Nomba has not confirmed it to Deli yet.
+
+Reason: {exc}
+
+Please wait 30 seconds and send *payment successful* again.
+
+If this keeps happening, send your Deli payment reference that starts with PAY-."""
+                )
+                return True
+
+            if payment and payment.status == Payment.STATUS_SUCCESS:
+                return True
+
+            if payment:
+                send_not_confirmed(payment)
+                return True
+
+            return False
 
         pending = (
             Payment.objects
             .filter(
                 order__customer=customer,
+            )
+            .exclude(
+                order__status=Order.STATUS_CANCELLED,
             )
             .filter(
                 Q(status=Payment.STATUS_PENDING)
@@ -1527,24 +1623,64 @@ If this keeps happening, send your Deli payment reference that starts with PAY-.
             return True
 
         if payment:
-            references = PaymentService.reference_candidates_for_payment(
-                payment,
-            )
-            reference_text = references[0] if references else payment.merchant_reference
-
-            WhatsAppService.send_text(
-                phone,
-                f"""We checked Nomba, but this order is not confirmed as paid on Deli yet.
-
-Order: *{payment.order.checkout_reference}*
-Payment reference: *{reference_text}*
-Current Deli status: *{payment.order.get_status_display()}*
-
-If you just paid, wait 30 seconds and send *payment successful* again."""
-            )
+            send_not_confirmed(payment)
             return True
 
         return False
+
+    @staticmethod
+    def _remove_order(
+        phone,
+        customer,
+        conversation,
+        order,
+    ):
+
+        if not order or order.customer_id != customer.id:
+            return RouterService._show_orders(
+                phone,
+                customer,
+            )
+
+        order.refresh_from_db()
+
+        if order.status not in (
+            Order.STATUS_PENDING,
+            Order.STATUS_AWAITING_PAYMENT,
+            Order.STATUS_CANCELLED,
+        ):
+            WhatsAppService.send_text(
+                phone,
+                f"""Order *{order.checkout_reference}* cannot be removed because it is already active or completed.
+
+Paid orders stay available for tracking, payouts, delivery confirmation, and review."""
+            )
+            return RouterService._show_order_actions(
+                phone,
+                customer,
+                conversation,
+                order,
+            )
+
+        reference = order.checkout_reference
+        order.delete()
+
+        conversation.selected_order = None
+        conversation.save(
+            update_fields=[
+                "selected_order",
+                "updated_at",
+            ]
+        )
+
+        WhatsAppService.send_text(
+            phone,
+            f"🗑️ Removed order *{reference}*.",
+        )
+        return RouterService._show_orders(
+            phone,
+            customer,
+        )
 
     @staticmethod
     def _confirm_payment_reference(

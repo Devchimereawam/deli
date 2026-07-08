@@ -258,7 +258,7 @@ Thanks for using Deli.
 {OrderService.order_tracking_text(order)}""",
             OrderService.post_payment_action_rows(),
             "Order actions",
-            "You can also reply 1, 2, 3, 4, or 5.",
+            "You can also reply 1, 2, 3, 4, 5, or 6.",
         )
 
     @staticmethod
@@ -289,6 +289,11 @@ Thanks for using Deli.
                 "home",
                 "Keep Shopping",
                 "Back to the main menu",
+            ),
+            (
+                "remove_order",
+                "Remove Order",
+                "Delete unpaid or cancelled order",
             ),
         ]
 
@@ -771,7 +776,7 @@ We'll keep you posted.{partner_note}
 {cls.order_tracking_text(order)}""",
                 cls.post_payment_action_rows(),
                 "Order actions",
-                "Reply 1, 2, 3, 4, or 5.",
+                "Reply 1, 2, 3, 4, 5, or 6.",
             )
 
     @classmethod
@@ -916,7 +921,7 @@ The food has been handed to the rider.
 {cls.order_tracking_text(order)}""",
                     cls.post_payment_action_rows(),
                     "Order actions",
-                    "Reply 1, 2, 3, 4, or 5.",
+                    "Reply 1, 2, 3, 4, 5, or 6.",
                 )
 
                 WhatsAppService.send_text(

@@ -568,16 +568,46 @@ class PaymentService:
             transaction.get("reference"),
             transaction.get("merchantTxRef"),
             payment.order.payment_reference,
-            payment.order.checkout_reference,
         ]
 
         unique = []
 
         for reference in references:
+            if not reference:
+                continue
+
+            reference = str(reference).strip()
+
+            if reference.startswith("ORD-"):
+                continue
+
             if reference and reference not in unique:
                 unique.append(reference)
 
         return unique
+
+    @classmethod
+    def confirm_payment_for_order(cls, order):
+
+        payment = (
+            Payment.objects
+            .select_related(
+                "order",
+            )
+            .filter(
+                order=order,
+            )
+            .first()
+        )
+
+        if not payment:
+            raise Payment.DoesNotExist(
+                f"No local payment exists for {order.checkout_reference}."
+            )
+
+        return cls.confirm_checkout(
+            payment.merchant_reference,
+        )
 
     @classmethod
     def handle_event(cls, payload):
@@ -789,11 +819,15 @@ class PaymentService:
             .filter(
                 order__customer=customer,
             )
+            .exclude(
+                order__status=Order.STATUS_CANCELLED,
+            )
             .filter(
                 Q(status=Payment.STATUS_PENDING)
                 | Q(order__status=Order.STATUS_AWAITING_PAYMENT)
             )
             .order_by(
+                "-order__created_at",
                 "-created_at",
             )[:5]
         )
