@@ -1,5 +1,6 @@
-# To test properly, you need to set up three distinct user accounts: 
-* a Customer,
+# To test properly, you need to set up three distinct user accounts:
+
+- a Customer,
 - a Restaurant, and
 - a Rider.
 
