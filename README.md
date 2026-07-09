@@ -6,7 +6,7 @@
 
 # Testing with these separate roles allows you to track an order's lifecycle from placement to preparation and final delivery.
 
-# Completed Order View
+# Completed Order Demonstration
 
 <img width="750" height="1334" alt="IMG_1049" src="https://github.com/user-attachments/assets/1e6a837a-d3f7-4532-9dc0-cc2262a87b8d" />
 
